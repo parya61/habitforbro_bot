@@ -1,0 +1,12 @@
+services:
+  bot:
+    build: .
+    image: habits-bot
+    container_name: habits-bot
+    restart: always          # авто-перезапуск при падении и старте докера
+    env_file: .env           # токен и настройки берём из .env (не попадает в образ)
+    volumes:
+      - habits-data:/data    # база переживает пересборку и перезапуск контейнера
+
+volumes:
+  habits-data:

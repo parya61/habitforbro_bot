@@ -1,0 +1,177 @@
+"""Старт, регистрация, контроль доступа, помощь, общая отмена."""
+from __future__ import annotations
+
+from aiogram import F, Router
+from aiogram.filters import Command, CommandStart
+from aiogram.fsm.context import FSMContext
+from aiogram.types import CallbackQuery, Message
+from sqlalchemy.ext.asyncio import AsyncSession
+
+from config import config
+from db.models import User
+from db.queries import create_user, get_user_by_tg, grant_access
+from keyboards.main_menu import MAIN_MENU
+from keyboards.nav import home_kb, main_inline_kb
+from states import Registration
+
+router = Router()
+
+WELCOME = (
+    "🌱 <b>Приветствую тебя!</b>\n\n"
+    "Если ты оказался здесь — значит, ты хочешь измениться в лучшую сторону, "
+    "и это радует. Большие перемены в жизни складываются из маленьких, но "
+    "регулярных привычек.\n\n"
+    "Не спеши сразу что-то добавлять. Представь, каким человеком ты себя видишь "
+    "и хочешь быть по жизни. Подумай, что делает такой человек, какой образ жизни "
+    "он ведёт — и только тогда добавляй привычки.\n\n"
+    "Начни с малого, не нагружай себя сразу, добавляй постепенно. Главное в этом "
+    "деле — <b>регулярность</b>.\n\n"
+    "Я верю, что у тебя всё получится. 💪\n\n"
+    "Всё управляется кнопками 👇"
+)
+
+
+async def send_menu(message: Message) -> None:
+    """Показывает главное меню: нижнюю клавиатуру + inline-кнопки разделов."""
+    await message.answer(WELCOME, reply_markup=MAIN_MENU)
+    await message.answer("Главное меню:", reply_markup=main_inline_kb())
+
+HELP_TEXT = (
+    "ℹ️ <b>Команды</b>\n"
+    "/today — привычки на сегодня и отметки\n"
+    "/habits — мои привычки (создать, изменить, архив)\n"
+    "/diary — личный дневник\n"
+    "/stats — статистика и серии\n"
+    "/leaderboard — рейтинг участников\n"
+    "/start — главное меню\n\n"
+    "🔒 Дневник по умолчанию приватный. Привычки можно сделать публичными "
+    "(видят все участники) или скрытыми ото всех — это выбирается при создании "
+    "и меняется в настройках привычки."
+)
+
+
+def _can_auto_access(telegram_id: int) -> bool:
+    """Можно ли пустить без кодового слова (админ, whitelist или код не задан)."""
+    if telegram_id == config.admin_id:
+        return True
+    if config.allowed_ids and telegram_id in config.allowed_ids:
+        return True
+    if not config.invite_code:
+        return True
+    return False
+
+
+@router.message(CommandStart())
+async def cmd_start(message: Message, session: AsyncSession, state: FSMContext) -> None:
+    await state.clear()
+    tg = message.from_user
+    user = await get_user_by_tg(session, tg.id)
+    if user is None:
+        user = await create_user(session, tg.id, tg.username, tg.full_name)
+
+    if user.has_access:
+        await send_menu(message)
+        return
+
+    if _can_auto_access(tg.id):
+        await grant_access(session, user)
+        await send_menu(message)
+        return
+
+    # Требуется кодовое слово.
+    await state.set_state(Registration.code)
+    await message.answer(
+        "🔑 Это закрытый бот. Введите кодовое слово-приглашение, чтобы войти."
+    )
+
+
+@router.message(Registration.code)
+async def check_code(message: Message, session: AsyncSession, state: FSMContext) -> None:
+    code = (message.text or "").strip()
+    if code != config.invite_code:
+        await message.answer("❌ Неверное кодовое слово. Попробуйте ещё раз.")
+        return
+    user = await get_user_by_tg(session, message.from_user.id)
+    if user:
+        await grant_access(session, user)
+    await state.clear()
+    await message.answer("✅ Добро пожаловать!")
+    await send_menu(message)
+
+
+# Соответствие кнопок нижней клавиатуры разделам.
+MENU_TEXTS = {
+    "📋 Сегодня": "today",
+    "➕ Привычки": "habits",
+    "📔 Дневник": "diary",
+    "📊 Статистика": "stats",
+    "🏆 Рейтинг": "leaderboard",
+    "👥 Участники": "members",
+    "⚙️ Настройки": "settings",
+    "ℹ️ Помощь": "help",
+}
+
+
+async def _dispatch(dest: str, msg: Message, session: AsyncSession, user: User) -> None:
+    """Открывает нужный раздел. Ленивая загрузка — против циклических импортов."""
+    if dest == "menu":
+        await msg.answer("Главное меню:", reply_markup=main_inline_kb())
+    elif dest == "help":
+        await msg.answer(HELP_TEXT, reply_markup=home_kb())
+    elif dest == "today":
+        from handlers.today import show_today
+        await show_today(msg, session, user)
+    elif dest == "habits":
+        from handlers.habits import show_habits_list
+        await show_habits_list(msg, session, user)
+    elif dest == "diary":
+        from handlers.diary import cmd_diary
+        await cmd_diary(msg)
+    elif dest == "stats":
+        from handlers.stats import cmd_stats
+        await cmd_stats(msg, session, user)
+    elif dest == "leaderboard":
+        from handlers.leaderboard import cmd_leaderboard
+        await cmd_leaderboard(msg, session)
+    elif dest == "members":
+        from handlers.members import show_members
+        await show_members(msg, session)
+    elif dest == "settings":
+        from handlers.settings import cmd_settings
+        await cmd_settings(msg, user)
+
+
+@router.message(Command("help"))
+async def cmd_help(message: Message) -> None:
+    await message.answer(HELP_TEXT, reply_markup=home_kb())
+
+
+@router.message(F.text.in_(MENU_TEXTS))
+async def menu_text(
+    message: Message, session: AsyncSession, user: User, state: FSMContext
+) -> None:
+    """Нажатие кнопки нижнего меню в ЛЮБОМ состоянии: выходим из текущего
+    сценария (чтобы не застрять в мастере) и открываем раздел."""
+    await state.clear()
+    await _dispatch(MENU_TEXTS[message.text], message, session, user)
+
+
+@router.callback_query(F.data == "cancel")
+async def cancel_callback(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    from utils import safe_edit_text
+
+    await safe_edit_text(callback.message, "Отменено.")
+    await callback.message.answer("Главное меню:", reply_markup=main_inline_kb())
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("go:"))
+async def navigate(
+    callback: CallbackQuery, session: AsyncSession, user: User, state: FSMContext
+) -> None:
+    """Единая навигация по разделам через inline-кнопки (без команд)."""
+    await state.clear()
+    dest = callback.data.split(":")[1]
+    await _dispatch(dest, callback.message, session, user)
+    await callback.answer()
