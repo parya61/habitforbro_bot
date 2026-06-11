@@ -116,10 +116,33 @@ async def diary_history(callback: CallbackQuery, session: AsyncSession, user: Us
         await callback.message.answer("Записей пока нет.")
         await callback.answer()
         return
-    lines = ["📚 <b>Последние записи:</b>\n"]
+    blocks = ["📚 <b>Последние записи:</b>"]
     for e in entries:
         mood = f" {e.mood}" if e.mood else ""
-        snippet = e.text if len(e.text) <= 200 else e.text[:200] + "…"
-        lines.append(f"<b>{e.entry_date:%d.%m.%Y}</b>{mood}\n{esc(snippet)}\n")
-    await callback.message.answer("\n".join(lines), reply_markup=home_kb())
+        blocks.append(f"<b>{e.entry_date:%d.%m.%Y}</b>{mood}\n{esc(e.text)}")
+
+    # Telegram ограничивает сообщение 4096 символами — режем историю на части
+    # по границам записей, очень длинную одиночную запись дробим принудительно.
+    LIMIT = 3800
+    chunks: list[str] = []
+    buf = ""
+    for block in blocks:
+        while len(block) > LIMIT:
+            head, block = block[:LIMIT], block[LIMIT:]
+            if buf:
+                chunks.append(buf)
+                buf = ""
+            chunks.append(head)
+        piece = block if not buf else f"{buf}\n\n{block}"
+        if len(piece) > LIMIT:
+            chunks.append(buf)
+            buf = block
+        else:
+            buf = piece
+    if buf:
+        chunks.append(buf)
+
+    for i, chunk in enumerate(chunks):
+        is_last = i == len(chunks) - 1
+        await callback.message.answer(chunk, reply_markup=home_kb() if is_last else None)
     await callback.answer()
