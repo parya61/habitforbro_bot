@@ -1,4 +1,4 @@
-"""Чайный дневник: профиль, запись чаепитий, история, статистика."""
+"""Чайный дневник: профиль, запись чаепитий, лента, сообщения, статистика."""
 from __future__ import annotations
 
 from datetime import date, timedelta
@@ -16,15 +16,21 @@ from db.queries import (
     avg_tea_rating,
     count_tea_sessions,
     get_tea_profile,
+    get_tea_session,
+    get_user_by_tg,
+    list_public_tea_sessions,
     list_tea_sessions,
+    list_user_public_tea_sessions,
+    list_users,
     tea_name_stats,
     tea_session_dates,
     tea_type_stats,
+    update_user_settings,
     upsert_tea_profile,
 )
 from keyboards.nav import home_kb
-from states import TeaProfileFlow, TeaSessionFlow
-from utils import esc, user_today
+from states import TeaMessageFlow, TeaProfileFlow, TeaSessionFlow
+from utils import display_name, esc, user_today
 
 router = Router()
 
@@ -72,12 +78,19 @@ CHA_QI_OPTIONS = {
 }
 
 
-def _tea_menu_kb() -> InlineKeyboardBuilder:
+PAGE_SIZE = 5
+
+
+def _tea_menu_kb(user: User | None = None) -> InlineKeyboardBuilder:
     kb = InlineKeyboardBuilder()
     kb.button(text="🍵 Записать чаепитие", callback_data="tea:write")
+    kb.button(text="🌍 Чайная лента", callback_data="tea:feed:0")
     kb.button(text="📚 Мои записи", callback_data="tea:history")
     kb.button(text="📊 Чайная статистика", callback_data="tea:stats")
     kb.button(text="👤 Мой чайный профиль", callback_data="tea:profile")
+    if user is not None:
+        priv = "🔒 Скрыть записи" if not user.tea_diary_private else "🔓 Открыть записи"
+        kb.button(text=priv, callback_data="tea:toggle_privacy")
     kb.adjust(1)
     return kb
 
@@ -130,15 +143,18 @@ def _type_label(code: str) -> str:
 
 @router.message(Command("tea"))
 @router.message(F.text == "🍵 Чай")
-async def cmd_tea(message: Message) -> None:
-    await show_tea_menu(message)
+async def cmd_tea(message: Message, user: User) -> None:
+    await show_tea_menu(message, user)
 
 
-async def show_tea_menu(message: Message) -> None:
+async def show_tea_menu(message: Message, user: User | None = None) -> None:
+    priv_hint = ""
+    if user and user.tea_diary_private:
+        priv_hint = "\n🔒 Твои записи скрыты от других."
     await message.answer(
         "🍵 <b>Чайный дневник</b>\n"
-        "Записывай чаепития, отслеживай вкусы и серии.",
-        reply_markup=_tea_menu_kb().as_markup(),
+        f"Записывай чаепития, отслеживай вкусы и серии.{priv_hint}",
+        reply_markup=_tea_menu_kb(user).as_markup(),
     )
 
 
@@ -478,7 +494,7 @@ async def tea_session_qi(
         notes=data.get("tea_notes"),
         photo_file_ids=photo_str,
         cha_qi=cha_qi,
-        private=True,
+        private=user.tea_diary_private,
         session_date=today,
     )
     await state.clear()
@@ -593,6 +609,198 @@ async def tea_stats(
 
     kb = InlineKeyboardBuilder()
     kb.button(text="⬅️ Назад", callback_data="go:tea")
+    await callback.message.answer("\n".join(lines), reply_markup=kb.as_markup())
+    await callback.answer()
+
+
+# ==================== Приватность ====================
+
+@router.callback_query(F.data == "tea:toggle_privacy")
+async def tea_toggle_privacy(
+    callback: CallbackQuery, session: AsyncSession, user: User
+) -> None:
+    new_val = not user.tea_diary_private
+    await update_user_settings(session, user, tea_diary_private=new_val)
+    label = "🔒 скрыты" if new_val else "🔓 открыты"
+    await callback.answer(f"Чайные записи теперь {label}", show_alert=True)
+    await callback.message.edit_reply_markup(
+        reply_markup=_tea_menu_kb(user).as_markup()
+    )
+
+
+# ==================== Чайная лента ====================
+
+def _format_session_card(s, author_name: str) -> str:
+    line = (
+        f"<b>{s.session_date:%d.%m.%Y}</b> — 👤 <b>{esc(author_name)}</b>\n"
+        f"{_type_label(s.tea_type)} <b>{esc(s.tea_name)}</b>"
+    )
+    if s.rating:
+        line += f" — ⭐ {s.rating}/10"
+    if s.taste_tags:
+        line += f"\n👅 {esc(s.taste_tags)}"
+    if s.notes:
+        preview = s.notes[:150] + ("…" if len(s.notes) > 150 else "")
+        line += f"\n📝 <i>{esc(preview)}</i>"
+    if s.cha_qi and s.cha_qi != "none":
+        qi = CHA_QI_OPTIONS.get(s.cha_qi, s.cha_qi)
+        line += f"\n✨ {qi}"
+    return line
+
+
+@router.callback_query(F.data.startswith("tea:feed:"))
+async def tea_feed(callback: CallbackQuery, session: AsyncSession, user: User) -> None:
+    page = int(callback.data.split(":")[2])
+    offset = page * PAGE_SIZE
+    sessions = await list_public_tea_sessions(session, limit=PAGE_SIZE + 1, offset=offset)
+    has_next = len(sessions) > PAGE_SIZE
+    sessions = sessions[:PAGE_SIZE]
+
+    if not sessions and page == 0:
+        await callback.message.answer(
+            "🌍 Пока никто не делился чаепитиями.\n"
+            "Будь первым — запиши чаепитие и открой записи!",
+            reply_markup=_tea_menu_kb(user).as_markup(),
+        )
+        await callback.answer()
+        return
+
+    blocks = ["🌍 <b>Чайная лента</b>\n"]
+    for s in sessions:
+        author = display_name(s.user) if s.user else "?"
+        blocks.append(_format_session_card(s, author))
+
+    text = "\n\n".join(blocks)
+    if len(text) > 3800:
+        text = text[:3800] + "\n\n<i>…</i>"
+
+    kb = InlineKeyboardBuilder()
+    for s in sessions:
+        if s.user_id != user.id:
+            kb.button(
+                text=f"💬 {esc(s.tea_name)[:20]}",
+                callback_data=f"tea:msg:{s.id}",
+            )
+    kb.adjust(1)
+
+    nav_buttons = []
+    if page > 0:
+        nav_buttons.append(("⬅️", f"tea:feed:{page - 1}"))
+    if has_next:
+        nav_buttons.append(("➡️", f"tea:feed:{page + 1}"))
+    for txt, cb in nav_buttons:
+        kb.button(text=txt, callback_data=cb)
+    if nav_buttons:
+        kb.adjust(*([1] * len(sessions)), len(nav_buttons))
+
+    kb.button(text="⬅️ Чайный дневник", callback_data="go:tea")
+    await callback.message.answer(text, reply_markup=kb.as_markup())
+
+    for s in sessions:
+        if s.photo_file_ids:
+            fids = s.photo_file_ids.split(",")
+            try:
+                await callback.message.answer_photo(fids[0])
+            except Exception:
+                pass
+    await callback.answer()
+
+
+# ==================== Чайные сообщения ====================
+
+@router.callback_query(F.data.startswith("tea:msg:"))
+async def tea_msg_start(callback: CallbackQuery, state: FSMContext) -> None:
+    ts_id = int(callback.data.split(":")[2])
+    await state.set_state(TeaMessageFlow.text)
+    await state.update_data(tea_msg_session_id=ts_id)
+    await callback.message.answer(
+        "💬 <b>Написать автору</b>\n\n"
+        "Спроси где купил, как заваривает, поделись мнением.\n"
+        "Напиши сообщение (до 500 символов):"
+    )
+    await callback.answer()
+
+
+@router.message(TeaMessageFlow.text)
+async def tea_msg_send(
+    message: Message,
+    state: FSMContext,
+    session: AsyncSession,
+    user: User,
+) -> None:
+    data = await state.get_data()
+    ts_id = data.get("tea_msg_session_id")
+    await state.clear()
+
+    text = (message.text or "").strip()[:500]
+    if not text:
+        await message.answer("Пустое сообщение не отправлю.")
+        return
+
+    ts = await get_tea_session(session, ts_id) if ts_id else None
+    if not ts:
+        await message.answer("Запись не найдена.")
+        return
+
+    sender = display_name(user)
+    tea_info = f"{_type_label(ts.tea_type)} {ts.tea_name}"
+    try:
+        await message.bot.send_message(
+            ts.user.telegram_id,
+            f"🍵💬 <b>Сообщение от {esc(sender)}</b>\n"
+            f"По записи: {esc(tea_info)}\n\n"
+            f"{esc(text)}",
+        )
+        await message.answer("✅ Сообщение отправлено!")
+    except Exception:
+        await message.answer("Не удалось отправить сообщение.")
+
+
+# ==================== Чайный профиль другого пользователя ====================
+
+@router.callback_query(F.data.startswith("tea:user:"))
+async def tea_user_profile(
+    callback: CallbackQuery, session: AsyncSession, user: User
+) -> None:
+    target_tg = int(callback.data.split(":")[2])
+    target = await get_user_by_tg(session, target_tg)
+    if not target:
+        await callback.answer("Пользователь не найден", show_alert=True)
+        return
+
+    name = display_name(target)
+    profile = await get_tea_profile(session, target.id)
+    sessions = await list_user_public_tea_sessions(session, target.id, limit=5)
+
+    lines = [f"🍵 <b>Чайный профиль: {esc(name)}</b>\n"]
+    if profile:
+        if profile.tea_story:
+            story = profile.tea_story[:200] + ("…" if len(profile.tea_story) > 200 else "")
+            lines.append(f"📖 <i>{esc(story)}</i>\n")
+        if profile.favorite_types:
+            types = [_type_label(t) for t in profile.favorite_types.split(",")]
+            lines.append(f"❤️ Любимые: {', '.join(types)}")
+        if profile.taste_preferences:
+            lines.append(f"👅 Вкусы: {profile.taste_preferences}")
+
+    if sessions:
+        lines.append(f"\n<b>Последние чаепития:</b>")
+        for s in sessions:
+            entry = f"{_type_label(s.tea_type)} <b>{esc(s.tea_name)}</b>"
+            if s.rating:
+                entry += f" — ⭐ {s.rating}/10"
+            lines.append(entry)
+    else:
+        lines.append("\nНет публичных записей.")
+
+    kb = InlineKeyboardBuilder()
+    for s in sessions:
+        kb.button(
+            text=f"💬 {s.tea_name[:20]}",
+            callback_data=f"tea:msg:{s.id}",
+        )
+    kb.adjust(1)
+    kb.button(text="⬅️ Лента", callback_data="tea:feed:0")
     await callback.message.answer("\n".join(lines), reply_markup=kb.as_markup())
     await callback.answer()
 

@@ -154,7 +154,7 @@ async def _dispatch(dest: str, msg: Message, session: AsyncSession, user: User) 
         await show_members(msg, session)
     elif dest == "tea":
         from handlers.tea import show_tea_menu
-        await show_tea_menu(msg)
+        await show_tea_menu(msg, user)
     elif dest == "prizes":
         from handlers.prizes import show_prizes
         await show_prizes(msg, session, user)

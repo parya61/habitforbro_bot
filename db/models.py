@@ -40,6 +40,8 @@ class User(Base):
 
     # Приватность дневника по умолчанию: True — записи видит только автор.
     diary_private: Mapped[bool] = mapped_column(Boolean, default=True)
+    # Приватность чайного дневника: False — записи видят все (по умолчанию открыт).
+    tea_diary_private: Mapped[bool] = mapped_column(Boolean, default=False)
     # Флаг доступа: разрешён ли вход (прошёл проверку кодового слова/whitelist).
     has_access: Mapped[bool] = mapped_column(Boolean, default=False)
 

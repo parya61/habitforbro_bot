@@ -8,6 +8,7 @@ from sqlalchemy.ext.asyncio import AsyncEngine
 _COLUMN_MIGRATIONS = [
     ("habits", "description", "ALTER TABLE habits ADD COLUMN description TEXT"),
     ("users", "nickname", "ALTER TABLE users ADD COLUMN nickname VARCHAR(64)"),
+    ("users", "tea_diary_private", "ALTER TABLE users ADD COLUMN tea_diary_private BOOLEAN DEFAULT 0"),
 ]
 
 

@@ -62,3 +62,7 @@ class TeaSessionFlow(StatesGroup):
     notes = State()        # заметки (аромат, вкус, заваривание)
     photo = State()        # фото
     qi = State()           # ча ци
+
+
+class TeaMessageFlow(StatesGroup):
+    text = State()         # текст сообщения о чае

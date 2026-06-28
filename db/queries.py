@@ -389,3 +389,40 @@ async def avg_tea_rating(session: AsyncSession, user_id: int) -> float | None:
         .where(TeaSession.user_id == user_id, TeaSession.rating.isnot(None))
     )
     return round(float(res), 1) if res else None
+
+
+async def list_public_tea_sessions(
+    session: AsyncSession, limit: int = 15, offset: int = 0
+) -> list[TeaSession]:
+    from sqlalchemy.orm import joinedload
+    res = await session.execute(
+        select(TeaSession)
+        .options(joinedload(TeaSession.user))
+        .where(TeaSession.private.is_(False))
+        .order_by(TeaSession.session_date.desc(), TeaSession.created_at.desc())
+        .offset(offset)
+        .limit(limit)
+    )
+    return list(res.scalars().all())
+
+
+async def list_user_public_tea_sessions(
+    session: AsyncSession, user_id: int, limit: int = 10
+) -> list[TeaSession]:
+    res = await session.execute(
+        select(TeaSession)
+        .where(TeaSession.user_id == user_id, TeaSession.private.is_(False))
+        .order_by(TeaSession.session_date.desc(), TeaSession.created_at.desc())
+        .limit(limit)
+    )
+    return list(res.scalars().all())
+
+
+async def get_tea_session(session: AsyncSession, ts_id: int) -> TeaSession | None:
+    from sqlalchemy.orm import joinedload
+    res = await session.execute(
+        select(TeaSession)
+        .options(joinedload(TeaSession.user))
+        .where(TeaSession.id == ts_id)
+    )
+    return res.scalar_one_or_none()
