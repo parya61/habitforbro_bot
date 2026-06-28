@@ -117,9 +117,9 @@ def _tags_kb(selected: set[str]) -> InlineKeyboardBuilder:
     kb = InlineKeyboardBuilder()
     for tag in TASTE_TAGS:
         mark = "✅ " if tag in selected else ""
-        kb.button(text=f"{mark}{tag}", callback_data=f"tg:{tag}")
-    kb.button(text="✔️ Готово", callback_data="tg:done")
-    kb.button(text="Пропустить", callback_data="tg:skip")
+        kb.button(text=f"{mark}{tag}", callback_data=f"ttag:{tag}")
+    kb.button(text="✔️ Готово", callback_data="ttag:done")
+    kb.button(text="Пропустить", callback_data="ttag:skip")
     kb.adjust(2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1)
     return kb
 
@@ -275,11 +275,11 @@ async def tea_profile_types_done(callback: CallbackQuery, state: FSMContext) -> 
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("tg:"), TeaProfileFlow.tastes)
+@router.callback_query(F.data.startswith("ttag:"), TeaProfileFlow.tastes)
 async def tea_profile_toggle_taste(
     callback: CallbackQuery, state: FSMContext, session: AsyncSession, user: User
 ) -> None:
-    tag = callback.data[3:]
+    tag = callback.data[5:]
     data = await state.get_data()
 
     if tag == "done" or tag == "skip":
@@ -381,9 +381,9 @@ async def tea_session_rating(callback: CallbackQuery, state: FSMContext) -> None
     await callback.answer()
 
 
-@router.callback_query(F.data.startswith("tg:"), TeaSessionFlow.tags)
+@router.callback_query(F.data.startswith("ttag:"), TeaSessionFlow.tags)
 async def tea_session_tags(callback: CallbackQuery, state: FSMContext) -> None:
-    tag = callback.data[3:]
+    tag = callback.data[5:]
     data = await state.get_data()
 
     if tag == "done" or tag == "skip":
