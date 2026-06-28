@@ -740,22 +740,23 @@ async def tea_toggle_privacy(
 
 # ==================== Чайная лента ====================
 
-def _format_session_card(s, author_name: str) -> str:
-    line = (
-        f"<b>{s.session_date:%d.%m.%Y}</b> — 👤 <b>{esc(author_name)}</b>\n"
-        f"{_type_label(s.tea_type)} <b>{esc(s.tea_name)}</b>"
-    )
+def _feed_card_text(s, author_name: str) -> str:
+    lines = [
+        f"<b>{s.session_date:%d.%m.%Y}</b> — 👤 <b>{esc(author_name)}</b>",
+        f"{_type_label(s.tea_type)} <b>{esc(s.tea_name)}</b>",
+    ]
     if s.rating:
-        line += f" — ⭐ {s.rating}/10"
+        lines[-1] += f" — ⭐ {s.rating}/10"
     if s.taste_tags:
-        line += f"\n👅 {esc(s.taste_tags)}"
+        lines.append(f"👅 {esc(s.taste_tags)}")
     if s.notes:
-        preview = s.notes[:150] + ("…" if len(s.notes) > 150 else "")
-        line += f"\n📝 <i>{esc(preview)}</i>"
+        max_len = 700 if s.photo_file_ids else 3000
+        preview = s.notes[:max_len] + ("…" if len(s.notes) > max_len else "")
+        lines.append(f"📝 <i>{esc(preview)}</i>")
     if s.cha_qi and s.cha_qi != "none":
         qi = CHA_QI_OPTIONS.get(s.cha_qi, s.cha_qi)
-        line += f"\n✨ {qi}"
-    return line
+        lines.append(f"✨ {qi}")
+    return "\n".join(lines)
 
 
 @router.callback_query(F.data.startswith("tea:feed:"))
@@ -775,44 +776,50 @@ async def tea_feed(callback: CallbackQuery, session: AsyncSession, user: User) -
         await callback.answer()
         return
 
-    blocks = ["🌍 <b>Чайная лента</b>\n"]
-    for s in sessions:
-        author = display_name(s.user) if s.user else "?"
-        blocks.append(_format_session_card(s, author))
+    await callback.message.answer("🌍 <b>Чайная лента</b>")
 
-    text = "\n\n".join(blocks)
-    if len(text) > 3800:
-        text = text[:3800] + "\n\n<i>…</i>"
-
-    kb = InlineKeyboardBuilder()
-    for s in sessions:
-        if s.user_id != user.id:
-            kb.button(
-                text=f"💬 {esc(s.tea_name)[:20]}",
-                callback_data=f"tea:msg:{s.id}",
-            )
-    kb.adjust(1)
-
-    nav_buttons = []
+    nav_kb = InlineKeyboardBuilder()
     if page > 0:
-        nav_buttons.append(("⬅️", f"tea:feed:{page - 1}"))
+        nav_kb.button(text="⬅️", callback_data=f"tea:feed:{page - 1}")
     if has_next:
-        nav_buttons.append(("➡️", f"tea:feed:{page + 1}"))
-    for txt, cb in nav_buttons:
-        kb.button(text=txt, callback_data=cb)
-    if nav_buttons:
-        kb.adjust(*([1] * len(sessions)), len(nav_buttons))
+        nav_kb.button(text="➡️", callback_data=f"tea:feed:{page + 1}")
+    nav_kb.button(text="⬅️ Чайный дневник", callback_data="go:tea")
+    nav_row = []
+    if page > 0:
+        nav_row.append("⬅️")
+    if has_next:
+        nav_row.append("➡️")
+    if nav_row:
+        nav_kb.adjust(len(nav_row), 1)
+    else:
+        nav_kb.adjust(1)
 
-    kb.button(text="⬅️ Чайный дневник", callback_data="go:tea")
-    await callback.message.answer(text, reply_markup=kb.as_markup())
+    for i, s in enumerate(sessions):
+        is_last = i == len(sessions) - 1
+        author = display_name(s.user) if s.user else "?"
+        card = _feed_card_text(s, author)
 
-    for s in sessions:
+        card_kb = InlineKeyboardBuilder()
+        if s.user_id != user.id:
+            card_kb.button(text=f"💬 Написать", callback_data=f"tea:msg:{s.id}")
+        markup = card_kb.as_markup() if card_kb.export() else None
+
+        if is_last:
+            markup = nav_kb.as_markup()
+
         if s.photo_file_ids:
             fids = s.photo_file_ids.split(",")
             try:
-                await callback.message.answer_photo(fids[0])
+                await callback.message.answer_photo(
+                    fids[0], caption=card, reply_markup=markup,
+                )
+                for fid in fids[1:]:
+                    await callback.message.answer_photo(fid)
             except Exception:
-                pass
+                await callback.message.answer(card, reply_markup=markup)
+        else:
+            await callback.message.answer(card, reply_markup=markup)
+
     await callback.answer()
 
 
