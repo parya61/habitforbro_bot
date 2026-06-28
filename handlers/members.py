@@ -106,9 +106,13 @@ async def show_member(callback: CallbackQuery, session: AsyncSession) -> None:
 async def send_reaction(callback: CallbackQuery, user: User) -> None:
     _, target_tg, reaction = callback.data.split(":")
     sender = display_name(user)
+    kb = InlineKeyboardBuilder()
+    kb.button(text="💬 Ответить", callback_data=f"msg:{user.telegram_id}")
     try:
         await callback.bot.send_message(
-            int(target_tg), f"{reaction} {esc(sender)} поддерживает тебя!"
+            int(target_tg),
+            f"{reaction} <b>{esc(sender)}</b> поддерживает тебя!",
+            reply_markup=kb.as_markup(),
         )
         await callback.answer(f"Отправлено {reaction}")
     except Exception:
@@ -138,9 +142,13 @@ async def finish_send_message(
         await message.answer("Пустое сообщение не отправлю.")
         return
     sender = display_name(user)
+    kb = InlineKeyboardBuilder()
+    kb.button(text="💬 Ответить", callback_data=f"msg:{user.telegram_id}")
     try:
         await message.bot.send_message(
-            target_tg, f"💬 Сообщение от {esc(sender)}:\n\n{esc(text)}"
+            target_tg,
+            f"💬 <b>Сообщение от {esc(sender)}:</b>\n\n{esc(text)}",
+            reply_markup=kb.as_markup(),
         )
         await message.answer("✅ Сообщение отправлено!")
     except Exception:

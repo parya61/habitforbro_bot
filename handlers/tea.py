@@ -861,12 +861,15 @@ async def tea_msg_send(
 
     sender = display_name(user)
     tea_info = f"{_type_label(ts.tea_type)} {ts.tea_name}"
+    kb = InlineKeyboardBuilder()
+    kb.button(text="💬 Ответить", callback_data=f"msg:{user.telegram_id}")
     try:
         await message.bot.send_message(
             ts.user.telegram_id,
             f"🍵💬 <b>Сообщение от {esc(sender)}</b>\n"
             f"По записи: {esc(tea_info)}\n\n"
             f"{esc(text)}",
+            reply_markup=kb.as_markup(),
         )
         await message.answer("✅ Сообщение отправлено!")
     except Exception:
