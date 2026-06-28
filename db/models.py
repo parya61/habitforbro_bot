@@ -154,3 +154,35 @@ class Prize(Base):
     announced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     winner: Mapped["User | None"] = relationship()
+
+
+class TeaProfile(Base):
+    __tablename__ = "tea_profiles"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), unique=True, index=True)
+    tea_story: Mapped[str | None] = mapped_column(Text, nullable=True)
+    favorite_types: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    taste_preferences: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship()
+
+
+class TeaSession(Base):
+    __tablename__ = "tea_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    tea_name: Mapped[str] = mapped_column(String(256))
+    tea_type: Mapped[str] = mapped_column(String(32))
+    rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    taste_tags: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    photo_file_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
+    cha_qi: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    private: Mapped[bool] = mapped_column(Boolean, default=True)
+    session_date: Mapped[date] = mapped_column(Date, index=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship()

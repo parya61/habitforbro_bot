@@ -46,3 +46,19 @@ class SendMessage(StatesGroup):
 class AdminPrize(StatesGroup):
     description = State()  # описание приза
     code = State()         # код/ссылка приза
+
+
+class TeaProfileFlow(StatesGroup):
+    story = State()        # "Мой путь к чаю"
+    types = State()        # любимые виды чая
+    tastes = State()       # вкусовые предпочтения
+
+
+class TeaSessionFlow(StatesGroup):
+    name = State()         # название чая
+    tea_type = State()     # вид чая
+    rating = State()       # оценка 1-10
+    tags = State()         # вкусовые теги (мультивыбор)
+    notes = State()        # заметки (аромат, вкус, заваривание)
+    photo = State()        # фото
+    qi = State()           # ча ци

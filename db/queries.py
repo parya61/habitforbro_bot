@@ -11,7 +11,16 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import config
-from db.models import Achievement, DiaryEntry, Habit, HabitLog, Prize, User
+from db.models import (
+    Achievement,
+    DiaryEntry,
+    Habit,
+    HabitLog,
+    Prize,
+    TeaProfile,
+    TeaSession,
+    User,
+)
 
 
 # ---------- Пользователи ----------
@@ -285,3 +294,98 @@ async def list_prizes(session: AsyncSession, limit: int = 12) -> list[Prize]:
         select(Prize).order_by(Prize.month.desc()).limit(limit)
     )
     return list(res.scalars().all())
+
+
+# ---------- Чайный профиль ----------
+
+async def get_tea_profile(session: AsyncSession, user_id: int) -> TeaProfile | None:
+    res = await session.execute(
+        select(TeaProfile).where(TeaProfile.user_id == user_id)
+    )
+    return res.scalar_one_or_none()
+
+
+async def upsert_tea_profile(session: AsyncSession, user_id: int, **fields) -> TeaProfile:
+    profile = await get_tea_profile(session, user_id)
+    if profile is None:
+        profile = TeaProfile(user_id=user_id, **fields)
+        session.add(profile)
+    else:
+        for k, v in fields.items():
+            setattr(profile, k, v)
+    await session.commit()
+    await session.refresh(profile)
+    return profile
+
+
+# ---------- Чайные записи ----------
+
+async def add_tea_session(session: AsyncSession, **fields) -> TeaSession:
+    ts = TeaSession(**fields)
+    session.add(ts)
+    await session.commit()
+    await session.refresh(ts)
+    return ts
+
+
+async def list_tea_sessions(
+    session: AsyncSession, user_id: int, limit: int = 20
+) -> list[TeaSession]:
+    res = await session.execute(
+        select(TeaSession)
+        .where(TeaSession.user_id == user_id)
+        .order_by(TeaSession.session_date.desc(), TeaSession.created_at.desc())
+        .limit(limit)
+    )
+    return list(res.scalars().all())
+
+
+async def count_tea_sessions(session: AsyncSession, user_id: int) -> int:
+    from sqlalchemy import func
+    res = await session.scalar(
+        select(func.count()).select_from(TeaSession).where(TeaSession.user_id == user_id)
+    )
+    return res or 0
+
+
+async def tea_type_stats(session: AsyncSession, user_id: int) -> list[tuple[str, int]]:
+    from sqlalchemy import func
+    res = await session.execute(
+        select(TeaSession.tea_type, func.count())
+        .where(TeaSession.user_id == user_id)
+        .group_by(TeaSession.tea_type)
+        .order_by(func.count().desc())
+    )
+    return list(res.all())
+
+
+async def tea_name_stats(session: AsyncSession, user_id: int, limit: int = 5) -> list[tuple[str, int]]:
+    from sqlalchemy import func
+    res = await session.execute(
+        select(TeaSession.tea_name, func.count())
+        .where(TeaSession.user_id == user_id)
+        .group_by(TeaSession.tea_name)
+        .order_by(func.count().desc())
+        .limit(limit)
+    )
+    return list(res.all())
+
+
+async def tea_session_dates(session: AsyncSession, user_id: int) -> list[date]:
+    from sqlalchemy import func
+    res = await session.execute(
+        select(TeaSession.session_date)
+        .where(TeaSession.user_id == user_id)
+        .group_by(TeaSession.session_date)
+        .order_by(TeaSession.session_date.desc())
+    )
+    return [row[0] for row in res.all()]
+
+
+async def avg_tea_rating(session: AsyncSession, user_id: int) -> float | None:
+    from sqlalchemy import func
+    res = await session.scalar(
+        select(func.avg(TeaSession.rating))
+        .where(TeaSession.user_id == user_id, TeaSession.rating.isnot(None))
+    )
+    return round(float(res), 1) if res else None
