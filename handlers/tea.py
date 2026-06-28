@@ -621,6 +621,22 @@ async def tea_session_qi(
 
 # ==================== История ====================
 
+def _session_card_text(s) -> str:
+    lines = [f"<b>{s.session_date:%d.%m.%Y}</b> {_type_label(s.tea_type)} <b>{esc(s.tea_name)}</b>"]
+    if s.rating:
+        lines[0] += f" — ⭐ {s.rating}/10"
+    if s.taste_tags:
+        lines.append(f"👅 {esc(s.taste_tags)}")
+    if s.notes:
+        max_len = 800 if s.photo_file_ids else 3000
+        preview = s.notes[:max_len] + ("…" if len(s.notes) > max_len else "")
+        lines.append(f"📝 <i>{esc(preview)}</i>")
+    if s.cha_qi and s.cha_qi != "none":
+        qi = CHA_QI_OPTIONS.get(s.cha_qi, s.cha_qi)
+        lines.append(f"✨ {qi}")
+    return "\n".join(lines)
+
+
 @router.callback_query(F.data == "tea:history")
 async def tea_history(
     callback: CallbackQuery, session: AsyncSession, user: User
@@ -634,37 +650,30 @@ async def tea_history(
         await callback.answer()
         return
 
-    blocks = ["📚 <b>Последние чаепития:</b>\n"]
-    for s in sessions:
-        line = f"<b>{s.session_date:%d.%m.%Y}</b> {_type_label(s.tea_type)} <b>{esc(s.tea_name)}</b>"
-        if s.rating:
-            line += f" — ⭐ {s.rating}/10"
-        if s.taste_tags:
-            line += f"\n    👅 {esc(s.taste_tags)}"
-        if s.notes:
-            preview = s.notes[:120] + ("…" if len(s.notes) > 120 else "")
-            line += f"\n    📝 <i>{esc(preview)}</i>"
-        if s.cha_qi and s.cha_qi != "none":
-            qi = CHA_QI_OPTIONS.get(s.cha_qi, s.cha_qi)
-            line += f"\n    ✨ {qi}"
-        blocks.append(line)
-
-    text = "\n\n".join(blocks)
-    if len(text) > 3800:
-        text = text[:3800] + "\n\n<i>…показаны не все записи</i>"
+    await callback.message.answer("📚 <b>Последние чаепития:</b>")
 
     kb = InlineKeyboardBuilder()
     kb.button(text="⬅️ Назад", callback_data="go:tea")
-    await callback.message.answer(text, reply_markup=kb.as_markup())
+    last_kb = kb.as_markup()
 
-    for s in sessions:
+    for i, s in enumerate(sessions):
+        is_last = i == len(sessions) - 1
+        markup = last_kb if is_last else None
+        card = _session_card_text(s)
+
         if s.photo_file_ids:
             fids = s.photo_file_ids.split(",")
-            for fid in fids[:1]:
-                try:
+            try:
+                await callback.message.answer_photo(
+                    fids[0], caption=card, reply_markup=markup,
+                )
+                for fid in fids[1:]:
                     await callback.message.answer_photo(fid)
-                except Exception:
-                    pass
+            except Exception:
+                await callback.message.answer(card, reply_markup=markup)
+        else:
+            await callback.message.answer(card, reply_markup=markup)
+
     await callback.answer()
 
 
