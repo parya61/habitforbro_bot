@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import html
+from datetime import date, datetime
 
 from aiogram.exceptions import TelegramBadRequest
 from aiogram.types import InlineKeyboardMarkup, Message
@@ -16,6 +17,22 @@ def esc(text: object) -> str:
     if text is None:
         return ""
     return html.escape(str(text), quote=False)
+
+
+def display_name(user) -> str:
+    return user.nickname or user.name or user.username or f"id{user.telegram_id}"
+
+
+def user_today(user) -> date:
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo(user.timezone)
+    return datetime.now(tz).date()
+
+
+def user_now(user) -> datetime:
+    from zoneinfo import ZoneInfo
+    tz = ZoneInfo(user.timezone)
+    return datetime.now(tz)
 
 
 async def safe_edit_text(

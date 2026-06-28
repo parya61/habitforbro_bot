@@ -107,6 +107,24 @@ def _streak_flexible(done: set[date], today: date) -> int:
     return streak
 
 
+async def habit_freeze_usage(
+    session: AsyncSession, habit: Habit, today: date | None = None
+) -> tuple[int, int]:
+    """(использовано, всего) заморозок для привычки в текущем месяце."""
+    if habit.frequency == "times_per_week":
+        return 0, FREEZE_PER_MONTH
+    today = today or date.today()
+    month_start = today.replace(day=1)
+    done = await _done_dates(session, habit, month_start, today)
+    used = 0
+    day = month_start
+    while day <= today:
+        if is_scheduled(habit, day) and day not in done and day != today:
+            used += 1
+        day += timedelta(days=1)
+    return min(used, FREEZE_PER_MONTH), FREEZE_PER_MONTH
+
+
 async def best_streak(
     session: AsyncSession, habit: Habit, today: date | None = None
 ) -> int:

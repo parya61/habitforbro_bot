@@ -11,7 +11,7 @@ from db.queries import list_achievements, list_habits
 from keyboards.nav import home_kb
 from services.achievements import ACHIEVEMENTS
 from services.stats import user_stats
-from services.streaks import best_streak, current_streak
+from services.streaks import best_streak, current_streak, habit_freeze_usage
 from utils import esc
 
 router = Router()
@@ -37,8 +37,10 @@ async def cmd_stats(message: Message, session: AsyncSession, user: User) -> None
     for h in habits:
         cur = await current_streak(session, h, None)
         best = await best_streak(session, h, None)
+        used, total = await habit_freeze_usage(session, h)
         tag = " 🔒" if h.is_private else ""
-        lines.append(f"{h.emoji} {esc(h.title)}{tag}: 🔥 {cur} | 🏆 {best}")
+        freeze_str = f" | ❄️ {used}/{total}" if used > 0 else ""
+        lines.append(f"{h.emoji} {esc(h.title)}{tag}: 🔥 {cur} | 🏆 {best}{freeze_str}")
 
     # Достижения.
     achs = await list_achievements(session, user.id)

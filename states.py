@@ -10,6 +10,7 @@ class CreateHabit(StatesGroup):
     title = State()        # ввод названия (для своей привычки)
     target = State()       # цель (для количественной)
     weekdays = State()     # выбор дней недели
+    description = State()  # описание привычки (опционально)
     reminder = State()     # ввод времени напоминания
     place = State()        # ввод места
 
@@ -30,7 +31,18 @@ class RenameHabit(StatesGroup):
 class EditHabit(StatesGroup):
     reminder = State()     # новое время напоминания (или отключение)
     target = State()       # новая дневная цель (для количественной)
+    description = State()  # новое описание привычки
 
 
 class SettingsFlow(StatesGroup):
     timezone = State()     # ввод часового пояса
+    nickname = State()     # ввод никнейма
+
+
+class SendMessage(StatesGroup):
+    text = State()         # текст сообщения участнику
+
+
+class AdminPrize(StatesGroup):
+    description = State()  # описание приза
+    code = State()         # код/ссылка приза

@@ -91,6 +91,14 @@ def privacy_kb() -> InlineKeyboardMarkup:
     return kb.as_markup()
 
 
+def description_kb() -> InlineKeyboardMarkup:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="📝 Добавить описание", callback_data="desc:set")
+    kb.button(text="➡️ Пропустить", callback_data="desc:skip")
+    kb.adjust(1)
+    return kb.as_markup()
+
+
 def reminder_kb() -> InlineKeyboardMarkup:
     kb = InlineKeyboardBuilder()
     kb.button(text="⏰ Указать время", callback_data="rem:set")
@@ -125,6 +133,7 @@ def habit_edit_kb(habit) -> InlineKeyboardMarkup:
     """Меню редактирования параметров привычки."""
     kb = InlineKeyboardBuilder()
     kb.button(text="✏️ Название", callback_data=f"hb:rename:{habit.id}")
+    kb.button(text="📝 Описание", callback_data=f"he:desc:{habit.id}")
     if habit.type == "quantitative":
         kb.button(text="🎯 Цель", callback_data=f"he:target:{habit.id}")
     kb.button(text="🔁 Периодичность", callback_data=f"he:freq:{habit.id}")

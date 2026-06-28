@@ -37,16 +37,29 @@ async def send_menu(message: Message) -> None:
     await message.answer("Главное меню:", reply_markup=main_inline_kb())
 
 HELP_TEXT = (
-    "ℹ️ <b>Команды</b>\n"
+    "ℹ️ <b>Помощь</b>\n\n"
+    "<b>Команды:</b>\n"
     "/today — привычки на сегодня и отметки\n"
     "/habits — мои привычки (создать, изменить, архив)\n"
     "/diary — личный дневник\n"
     "/stats — статистика и серии\n"
     "/leaderboard — рейтинг участников\n"
     "/start — главное меню\n\n"
-    "🔒 Дневник по умолчанию приватный. Привычки можно сделать публичными "
-    "(видят все участники) или скрытыми ото всех — это выбирается при создании "
-    "и меняется в настройках привычки."
+    "<b>Обозначения:</b>\n"
+    "🔥 — текущая серия (сколько дней подряд выполняешь)\n"
+    "🏆 — лучшая серия за всё время (твой рекорд)\n"
+    "✅ — привычка выполнена\n"
+    "⬜ — привычка ещё не отмечена\n"
+    "🔒 — приватная привычка (видишь только ты)\n\n"
+    "<b>❄️ Заморозка:</b>\n"
+    "Можно пропустить до 2 дней в месяц без потери серии. "
+    "Заморозки расходуются автоматически. Если пропусков больше 2 — серия обнуляется.\n\n"
+    "<b>⏰ Дедлайн отметок:</b>\n"
+    "Привычки за сегодня — до конца дня. "
+    "Забыл отметить вчера? Можно до 10:00 утра следующего дня.\n\n"
+    "<b>🔐 Приватность:</b>\n"
+    "Дневник по умолчанию приватный. Привычки можно сделать публичными "
+    "(видят все участники) или скрытыми ото всех."
 )
 
 
@@ -107,6 +120,7 @@ MENU_TEXTS = {
     "📊 Статистика": "stats",
     "🏆 Рейтинг": "leaderboard",
     "👥 Участники": "members",
+    "🎁 Призы": "prizes",
     "⚙️ Настройки": "settings",
     "ℹ️ Помощь": "help",
 }
@@ -136,6 +150,9 @@ async def _dispatch(dest: str, msg: Message, session: AsyncSession, user: User) 
     elif dest == "members":
         from handlers.members import show_members
         await show_members(msg, session)
+    elif dest == "prizes":
+        from handlers.prizes import show_prizes
+        await show_prizes(msg, session, user)
     elif dest == "settings":
         from handlers.settings import cmd_settings
         await cmd_settings(msg, user)

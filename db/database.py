@@ -38,6 +38,8 @@ async def init_db() -> None:
     """Создаёт таблицы при первом запуске, если их ещё нет."""
     async with engine.begin() as conn:
         await conn.run_sync(Base.metadata.create_all)
+    from db.migrations import run_migrations
+    await run_migrations(engine)
 
 
 @asynccontextmanager

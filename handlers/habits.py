@@ -26,6 +26,7 @@ from keyboards.habits_kb import (
     TEMPLATES,
     WEEKDAY_NAMES,
     archived_list_kb,
+    description_kb,
     edit_frequency_kb,
     edit_times_per_week_kb,
     edit_weekdays_kb,
@@ -268,10 +269,43 @@ async def pick_privacy(callback: CallbackQuery, state: FSMContext) -> None:
     habit["privacy"] = privacy
     await state.update_data(habit=habit)
     await callback.message.edit_text(
-        f"Приватность: {PRIVACY_LABEL[privacy]}.\nНапоминание?",
-        reply_markup=reminder_kb(),
+        f"Приватность: {PRIVACY_LABEL[privacy]}.\n"
+        "Хочешь добавить описание привычки?",
+        reply_markup=description_kb(),
     )
     await callback.answer()
+
+
+@router.callback_query(F.data == "desc:skip")
+async def desc_skip(callback: CallbackQuery) -> None:
+    await callback.message.edit_text("Напоминание?", reply_markup=reminder_kb())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "desc:set")
+async def desc_set(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(CreateHabit.description)
+    await callback.message.answer(
+        "Опиши, что входит в привычку (например: бег 10 мин, 20 отжиманий, растяжка):"
+    )
+    await callback.answer()
+
+
+@router.message(CreateHabit.description)
+async def enter_description(message: Message, state: FSMContext) -> None:
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("Описание не может быть пустым. Попробуй ещё раз:")
+        return
+    data = await state.get_data()
+    habit = data.get("habit")
+    if habit is None:
+        await message.answer(STALE_WIZARD)
+        return
+    habit["description"] = text[:500]
+    await state.update_data(habit=habit)
+    await state.set_state(None)
+    await message.answer("Напоминание?", reply_markup=reminder_kb())
 
 
 @router.callback_query(F.data == "rem:skip")
@@ -347,6 +381,7 @@ async def _finish_create(
         session,
         user_id=user.id,
         title=h.get("title", "Привычка"),
+        description=h.get("description"),
         emoji=h.get("emoji", "✅"),
         type=h.get("type", "binary"),
         target=h.get("target"),
@@ -373,6 +408,8 @@ async def _finish_create(
 
 def _habit_summary(habit) -> str:
     lines = [f"{habit.emoji} <b>{esc(habit.title)}</b>"]
+    if habit.description:
+        lines.append(f"📝 {esc(habit.description)}")
     if habit.type == "quantitative":
         lines.append(f"Цель: {habit.target} {esc(habit.unit or '')}".strip())
     freq_map = {"daily": "каждый день", "weekdays": "по дням недели",
@@ -601,6 +638,37 @@ async def edit_target_finish(
     await update_habit(session, habit, target=int(raw))
     await message.answer(
         "✅ Цель обновлена.\n\n" + _habit_summary(habit),
+        reply_markup=habit_actions_kb(habit.id, habit.privacy),
+    )
+
+
+@router.callback_query(F.data.startswith("he:desc:"))
+async def edit_desc_start(callback: CallbackQuery, state: FSMContext) -> None:
+    habit_id = int(callback.data.split(":")[2])
+    await state.set_state(EditHabit.description)
+    await state.update_data(edit_id=habit_id)
+    await callback.message.answer(
+        "Введи новое описание (или напиши «убрать», чтобы удалить):"
+    )
+    await callback.answer()
+
+
+@router.message(EditHabit.description)
+async def edit_desc_finish(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    raw = (message.text or "").strip()
+    data = await state.get_data()
+    habit = await get_habit(session, data.get("edit_id"))
+    await state.clear()
+    if not habit:
+        await message.answer(STALE_WIZARD)
+        return
+    clear = raw.lower() in {"убрать", "удалить", "очистить", "-"}
+    await update_habit(session, habit, description=None if clear else raw[:500])
+    note = "Описание убрано." if clear else "Описание обновлено."
+    await message.answer(
+        f"✅ {note}\n\n" + _habit_summary(habit),
         reply_markup=habit_actions_kb(habit.id, habit.privacy),
     )
 

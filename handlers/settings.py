@@ -11,6 +11,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.models import User
 from db.queries import update_user_settings
 from states import SettingsFlow
+from utils import display_name
 
 router = Router()
 
@@ -23,6 +24,8 @@ def _settings_kb(user: User) -> InlineKeyboardBuilder:
     kb.button(text=f"🌅 Утренние сообщения: {morning}", callback_data="set:morning")
     kb.button(text=f"🌙 Вечерние напоминания: {evening}", callback_data="set:evening")
     kb.button(text=f"📔 Дневник: {diary}", callback_data="set:diary")
+    nick_label = display_name(user)
+    kb.button(text=f"✏️ Никнейм: {nick_label}", callback_data="set:nickname")
     kb.button(text=f"🌍 Часовой пояс: {user.timezone}", callback_data="set:tz")
     kb.adjust(1)
     kb.row(InlineKeyboardButton(text="🏠 Меню", callback_data="go:menu"))
@@ -62,6 +65,31 @@ async def toggle_diary(callback: CallbackQuery, session: AsyncSession, user: Use
     await update_user_settings(session, user, diary_private=not user.diary_private)
     await callback.message.edit_reply_markup(reply_markup=_settings_kb(user).as_markup())
     await callback.answer("Изменено")
+
+
+@router.callback_query(F.data == "set:nickname")
+async def set_nickname(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(SettingsFlow.nickname)
+    await callback.message.answer(
+        "Введи новый никнейм (до 64 символов) или «сброс», чтобы вернуть имя из Telegram:"
+    )
+    await callback.answer()
+
+
+@router.message(SettingsFlow.nickname)
+async def enter_nickname(
+    message: Message, state: FSMContext, session: AsyncSession, user: User
+) -> None:
+    raw = (message.text or "").strip()
+    reset = raw.lower() in {"сброс", "сбросить", "reset", "-"}
+    if not reset and not raw:
+        await message.answer("Никнейм не может быть пустым. Попробуй ещё:")
+        return
+    nickname = None if reset else raw[:64]
+    await update_user_settings(session, user, nickname=nickname)
+    await state.clear()
+    label = "сброшен на имя из Telegram" if reset else f"установлен: {raw[:64]}"
+    await message.answer(f"✅ Никнейм {label}")
 
 
 @router.callback_query(F.data == "set:tz")

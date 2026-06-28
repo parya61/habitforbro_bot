@@ -2,11 +2,13 @@
 from aiogram import Router
 
 from handlers import (
+    admin,
     diary,
     fallback,
     habits,
     leaderboard,
     members,
+    prizes,
     settings,
     start,
     stats,
@@ -18,12 +20,14 @@ def get_routers() -> list[Router]:
     # Порядок важен: старт/навигация сначала, фоллбэк — обязательно последним.
     return [
         start.router,
+        admin.router,
         habits.router,
         today.router,
         diary.router,
         stats.router,
         leaderboard.router,
         members.router,
+        prizes.router,
         settings.router,
         fallback.router,
     ]

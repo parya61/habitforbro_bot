@@ -11,7 +11,7 @@ from sqlalchemy import select, update
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from config import config
-from db.models import Achievement, DiaryEntry, Habit, HabitLog, User
+from db.models import Achievement, DiaryEntry, Habit, HabitLog, Prize, User
 
 
 # ---------- Пользователи ----------
@@ -245,5 +245,43 @@ async def list_achievements(session: AsyncSession, user_id: int) -> list[Achieve
         select(Achievement)
         .where(Achievement.user_id == user_id)
         .order_by(Achievement.earned_at.desc())
+    )
+    return list(res.scalars().all())
+
+
+# ---------- Призы ----------
+
+async def get_prize(session: AsyncSession, month: str) -> Prize | None:
+    res = await session.execute(select(Prize).where(Prize.month == month))
+    return res.scalar_one_or_none()
+
+
+async def set_prize(
+    session: AsyncSession, month: str, description: str, prize_code: str | None
+) -> Prize:
+    prize = await get_prize(session, month)
+    if prize is None:
+        prize = Prize(month=month, description=description, prize_code=prize_code)
+        session.add(prize)
+    else:
+        prize.description = description
+        prize.prize_code = prize_code
+    await session.commit()
+    await session.refresh(prize)
+    return prize
+
+
+async def set_prize_winner(
+    session: AsyncSession, prize: Prize, user_id: int
+) -> None:
+    from datetime import datetime
+    prize.winner_user_id = user_id
+    prize.announced_at = datetime.utcnow()
+    await session.commit()
+
+
+async def list_prizes(session: AsyncSession, limit: int = 12) -> list[Prize]:
+    res = await session.execute(
+        select(Prize).order_by(Prize.month.desc()).limit(limit)
     )
     return list(res.scalars().all())

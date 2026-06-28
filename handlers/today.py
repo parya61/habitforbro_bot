@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import random
-from datetime import date
+from datetime import date, timedelta
 
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -14,9 +14,9 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.models import User
 from db.queries import get_habit, get_log, list_habits, upsert_log
 from services.achievements import check_after_log
-from services.streaks import current_streak, is_scheduled
+from services.streaks import current_streak, habit_freeze_usage, is_scheduled
 from states import LogQuantity
-from utils import esc
+from utils import esc, user_now, user_today
 
 router = Router()
 
@@ -29,37 +29,76 @@ MOTIVATION = [
 ]
 
 
-async def _today_keyboard(session: AsyncSession, user: User, today: date):
-    habits = [h for h in await list_habits(session, user.id) if is_scheduled(h, today)]
+
+async def show_today(message: Message, session: AsyncSession, user: User) -> None:
+    today = user_today(user)
+    now = user_now(user)
+
+    all_habits = await list_habits(session, user.id)
     kb = InlineKeyboardBuilder()
-    if not habits:
-        return None, habits
-    for h in habits:
-        log = await get_log(session, h.id, today)
-        done = log is not None and log.done
-        mark = "✅" if done else "⬜"
-        extra = ""
-        if h.type == "quantitative" and log and log.amount:
-            extra = f" ({log.amount}/{h.target})"
-        kb.button(text=f"{mark} {h.emoji} {h.title}{extra}", callback_data=f"tg:{h.id}")
+    text_parts = []
+
+    # Секция «Вчера» — если до 10:00 и есть неотмеченные
+    if now.hour < 10:
+        yesterday = today - timedelta(days=1)
+        y_unmarked = []
+        for h in all_habits:
+            if is_scheduled(h, yesterday):
+                log = await get_log(session, h.id, yesterday)
+                if not log or not log.done:
+                    y_unmarked.append(h)
+        if y_unmarked:
+            text_parts.append("📅 <b>Вчера</b> (можно отметить до 10:00):")
+            for h in y_unmarked:
+                kb.button(
+                    text=f"📅 {h.emoji} {h.title}",
+                    callback_data=f"tgy:{h.id}",
+                )
+
+    # Секция «Сегодня»
+    today_habits = [h for h in all_habits if is_scheduled(h, today)]
+    if today_habits:
+        text_parts.append("\n📋 <b>Сегодня</b>")
+        for h in today_habits:
+            log = await get_log(session, h.id, today)
+            done = log is not None and log.done
+            mark = "✅" if done else "⬜"
+            extra = ""
+            if h.type == "quantitative" and log and log.amount:
+                extra = f" ({log.amount}/{h.target})"
+            kb.button(
+                text=f"{mark} {h.emoji} {h.title}{extra}",
+                callback_data=f"tg:{h.id}",
+            )
+
+    # Уведомление о заморозках
+    yesterday = today - timedelta(days=1)
+    freeze_names = []
+    for h in all_habits:
+        if is_scheduled(h, yesterday):
+            log = await get_log(session, h.id, yesterday)
+            if not log or not log.done:
+                used, total = await habit_freeze_usage(session, h, today)
+                if 0 < used <= total:
+                    freeze_names.append(f"{h.emoji} {h.title}")
+    if freeze_names:
+        names = ", ".join(freeze_names)
+        text_parts.append(f"\n❄️ Вчера сработала заморозка: {names}")
+
+    if not today_habits and not text_parts:
+        await message.answer(
+            "На сегодня привычек нет. Добавь их в разделе «➕ Привычки»."
+        )
+        return
+
     kb.adjust(1)
-    # Нижний ряд: обновить список и вернуться в меню.
     kb.row(
         InlineKeyboardButton(text="🔄 Обновить", callback_data="go:today"),
         InlineKeyboardButton(text="🏠 Меню", callback_data="go:menu"),
     )
-    return kb.as_markup(), habits
-
-
-async def show_today(message: Message, session: AsyncSession, user: User) -> None:
-    today = date.today()
-    markup, habits = await _today_keyboard(session, user, today)
-    if not habits:
-        await message.answer("На сегодня привычек нет. Добавь их в разделе «➕ Привычки».")
-        return
     await message.answer(
-        "📋 <b>Сегодня</b>\nНажми на привычку, чтобы отметить:",
-        reply_markup=markup,
+        "\n".join(text_parts) if text_parts else "📋 <b>Сегодня</b>\nНажми на привычку, чтобы отметить:",
+        reply_markup=kb.as_markup(),
     )
 
 
@@ -67,6 +106,46 @@ async def show_today(message: Message, session: AsyncSession, user: User) -> Non
 @router.message(F.text == "📋 Сегодня")
 async def cmd_today(message: Message, session: AsyncSession, user: User) -> None:
     await show_today(message, session, user)
+
+
+@router.callback_query(F.data.startswith("tgy:"))
+async def toggle_yesterday(
+    callback: CallbackQuery, session: AsyncSession, user: User, state: FSMContext
+) -> None:
+    now = user_now(user)
+    if now.hour >= 10:
+        await callback.answer(
+            "Время вышло — вчерашние можно отметить только до 10:00",
+            show_alert=True,
+        )
+        return
+    habit_id = int(callback.data.split(":")[1])
+    habit = await get_habit(session, habit_id)
+    if not habit:
+        await callback.answer("Не найдено", show_alert=True)
+        return
+    yesterday = user_today(user) - timedelta(days=1)
+    log = await get_log(session, habit_id, yesterday)
+    already_done = log is not None and log.done
+
+    if habit.type == "quantitative" and not already_done:
+        await state.set_state(LogQuantity.amount)
+        await state.update_data(habit_id=habit_id, log_date=yesterday.isoformat())
+        kb = InlineKeyboardBuilder()
+        kb.button(text=f"🎯 Цель ({habit.target})", callback_data=f"amt:{habit.target}")
+        kb.button(text="➕ Больше", callback_data="amt:more")
+        kb.button(text="➖ Меньше", callback_data="amt:less")
+        kb.adjust(1)
+        await callback.message.answer(
+            f"📅 Вчера: сколько {esc(habit.unit) or 'раз'}?",
+            reply_markup=kb.as_markup(),
+        )
+        await callback.answer()
+        return
+
+    new_done = not already_done
+    await upsert_log(session, habit_id, yesterday, done=new_done)
+    await _refresh_and_reply(callback, session, user, habit, user_today(user), new_done)
 
 
 @router.callback_query(F.data.startswith("tg:"))
@@ -79,15 +158,14 @@ async def toggle_habit(
         await callback.answer("Не найдено", show_alert=True)
         return
 
-    today = date.today()
+    today = user_today(user)
 
-    # Для количественных привычек спрашиваем число при отметке «выполнено».
     log = await get_log(session, habit_id, today)
     already_done = log is not None and log.done
 
     if habit.type == "quantitative" and not already_done:
         await state.set_state(LogQuantity.amount)
-        await state.update_data(habit_id=habit_id)
+        await state.update_data(habit_id=habit_id, log_date=today.isoformat())
         kb = InlineKeyboardBuilder()
         kb.button(text=f"🎯 Цель ({habit.target})", callback_data=f"amt:{habit.target}")
         kb.button(text="➕ Больше", callback_data="amt:more")
@@ -100,20 +178,12 @@ async def toggle_habit(
         await callback.answer()
         return
 
-    # Бинарная привычка или повторное нажатие — переключаем done.
     new_done = not already_done
     await upsert_log(session, habit_id, today, done=new_done)
     await _refresh_and_reply(callback, session, user, habit, today, new_done)
 
 
 async def _refresh_and_reply(callback, session, user, habit, today, new_done):
-    # Обновляем клавиатуру списка.
-    markup, _ = await _today_keyboard(session, user, today)
-    try:
-        await callback.message.edit_reply_markup(reply_markup=markup)
-    except Exception:
-        pass
-
     if new_done:
         streak = await current_streak(session, habit, today)
         msg = f"{random.choice(MOTIVATION)}\n🔥 Серия: {streak} дн."
@@ -137,7 +207,7 @@ async def quick_amount(
         await callback.answer("Привычка не найдена", show_alert=True)
         return
     choice = callback.data.split(":")[1]
-    today = date.today()
+    log_date = date.fromisoformat(data["log_date"]) if "log_date" in data else user_today(user)
 
     if choice == "more":
         await callback.message.answer("Введи число (больше цели):")
@@ -148,8 +218,8 @@ async def quick_amount(
 
     amount = int(choice)
     await state.clear()
-    await upsert_log(session, habit.id, today, done=True, amount=amount)
-    await _refresh_and_reply(callback, session, user, habit, today, True)
+    await upsert_log(session, habit.id, log_date, done=True, amount=amount)
+    await _refresh_and_reply(callback, session, user, habit, user_today(user), True)
 
 
 @router.message(LogQuantity.amount)
@@ -166,10 +236,11 @@ async def enter_amount(
         await state.clear()
         await message.answer("Привычка не найдена.")
         return
-    today = date.today()
+    log_date = date.fromisoformat(data["log_date"]) if "log_date" in data else user_today(user)
     await state.clear()
-    await upsert_log(session, habit.id, today, done=True, amount=int(raw))
+    await upsert_log(session, habit.id, log_date, done=True, amount=int(raw))
 
+    today = user_today(user)
     streak = await current_streak(session, habit, today)
     msg = f"Записал {raw} {esc(habit.unit) or ''}! 🔥 Серия: {streak} дн.".strip()
     badges = await check_after_log(session, user.id, habit, today)

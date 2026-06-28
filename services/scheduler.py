@@ -15,9 +15,18 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
 from db.database import get_session
-from db.queries import get_log, get_user_by_tg, list_habits, list_users
+from db.queries import (
+    get_log,
+    get_prize,
+    get_user_by_tg,
+    list_habits,
+    list_public_habits,
+    list_users,
+    set_prize_winner,
+)
 from services.stats import user_stats
-from services.streaks import is_scheduled
+from services.streaks import completion_rate, is_scheduled
+from utils import display_name, esc
 
 _scheduler: AsyncIOScheduler | None = None
 _bot: Bot | None = None
@@ -43,6 +52,10 @@ async def setup_scheduler(bot: Bot) -> None:
     _scheduler.add_job(
         _weekly_report,
         CronTrigger(day_of_week="sun", hour=20, minute=0, timezone=base_tz),
+    )
+    _scheduler.add_job(
+        _monthly_prize_winner,
+        CronTrigger(day=1, hour=0, minute=5, timezone=base_tz),
     )
 
     # Персональные напоминания по каждой активной привычке с указанным временем.
@@ -147,6 +160,58 @@ async def _weekly_report() -> None:
                 "Так держать! Новая неделя — новые серии 🔥"
             )
             await _safe_send(user.telegram_id, text)
+
+
+async def _monthly_prize_winner() -> None:
+    today = date.today()
+    last_day = today - timedelta(days=1)
+    month_str = last_day.strftime("%Y-%m")
+    month_start = last_day.replace(day=1)
+
+    async with get_session() as session:
+        prize = await get_prize(session, month_str)
+        if not prize or prize.winner_user_id is not None:
+            return
+
+        best_user = None
+        best_rate = -1.0
+        for user in await list_users(session):
+            habits = await list_public_habits(session, user.id)
+            if not habits:
+                continue
+            total_done = total_planned = 0
+            for h in habits:
+                d, p = await completion_rate(session, h, month_start, last_day)
+                total_done += d
+                total_planned += p
+            rate = total_done / total_planned if total_planned > 0 else 0
+            if rate > best_rate:
+                best_rate = rate
+                best_user = user
+
+        if not best_user or best_rate <= 0:
+            return
+
+        await set_prize_winner(session, prize, best_user.id)
+
+        text = (
+            f"🎉 <b>Поздравляем!</b>\n\n"
+            f"Ты победитель месяца ({month_str}) "
+            f"с результатом {round(best_rate * 100)}%!\n\n"
+            f"🎁 Твой приз: {prize.description}"
+        )
+        if prize.prize_code:
+            text += f"\n\n🔑 Код: <tg-spoiler>{prize.prize_code}</tg-spoiler>"
+        await _safe_send(best_user.telegram_id, text)
+
+        winner_name = display_name(best_user)
+        for user in await list_users(session):
+            if user.id != best_user.id:
+                await _safe_send(
+                    user.telegram_id,
+                    f"🏆 Победитель месяца ({month_str}): "
+                    f"{esc(winner_name)} с результатом {round(best_rate * 100)}%!",
+                )
 
 
 async def _safe_send(telegram_id: int, text: str) -> None:

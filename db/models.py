@@ -34,6 +34,7 @@ class User(Base):
     telegram_id: Mapped[int] = mapped_column(BigInteger, unique=True, index=True)
     username: Mapped[str | None] = mapped_column(String(64), nullable=True)
     name: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    nickname: Mapped[str | None] = mapped_column(String(64), nullable=True)
     registered_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     timezone: Mapped[str] = mapped_column(String(64), default="Europe/Moscow")
 
@@ -58,6 +59,7 @@ class Habit(Base):
     user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
 
     title: Mapped[str] = mapped_column(String(128))
+    description: Mapped[str | None] = mapped_column(Text, nullable=True)
     emoji: Mapped[str] = mapped_column(String(16), default="✅")
 
     # Тип: 'binary' — да/нет, 'quantitative' — с количеством.
@@ -137,3 +139,18 @@ class Achievement(Base):
     earned_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user: Mapped["User"] = relationship(back_populates="achievements")
+
+
+class Prize(Base):
+    __tablename__ = "prizes"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    month: Mapped[str] = mapped_column(String(7), unique=True, index=True)  # "YYYY-MM"
+    description: Mapped[str] = mapped_column(Text)
+    prize_code: Mapped[str | None] = mapped_column(Text, nullable=True)
+    winner_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    announced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    winner: Mapped["User | None"] = relationship()

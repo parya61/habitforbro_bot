@@ -12,7 +12,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.queries import list_public_habits, list_users
 from services.streaks import best_streak, completion_rate
-from utils import esc
+from utils import display_name, esc
 
 router = Router()
 
@@ -56,7 +56,7 @@ async def _compute_board(
             planned += p
             marks += d
             best = max(best, await best_streak(session, h, today))
-        name = user.name or user.username or f"id{user.telegram_id}"
+        name = display_name(user)
         if metric == "percent":
             value = round(100 * done / planned) if planned else 0
         elif metric == "streak":
