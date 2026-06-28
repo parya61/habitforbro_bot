@@ -51,14 +51,18 @@ class AdminPrize(StatesGroup):
 class TeaProfileFlow(StatesGroup):
     story = State()        # "Мой путь к чаю"
     types = State()        # любимые виды чая
+    custom_type = State()  # ввод своего вида чая
     tastes = State()       # вкусовые предпочтения
+    custom_taste = State() # ввод своего вкусового тега
 
 
 class TeaSessionFlow(StatesGroup):
     name = State()         # название чая
     tea_type = State()     # вид чая
+    custom_type = State()  # ввод своего вида чая
     rating = State()       # оценка 1-10
     tags = State()         # вкусовые теги (мультивыбор)
+    custom_tag = State()   # ввод своего вкусового тега
     notes = State()        # заметки (аромат, вкус, заваривание)
     photo = State()        # фото
     qi = State()           # ча ци

@@ -64,8 +64,8 @@ TASTE_TAGS = [
     "маслянистый", "древесный", "цветочный", "фруктовый",
     "шоколадный", "ореховый", "медовый", "карамельный",
     "ягодный", "сухофруктовый", "хлебный", "дымный",
-    "сливочный", "минеральный", "пряный", "кислинка",
-    "сладость", "горчинка", "терпкость", "свежесть",
+    "сливочный", "минеральный", "пряный", "камфорный",
+    "кислинка", "сладость", "горчинка", "терпкость", "свежесть",
 ]
 
 CHA_QI_OPTIONS = {
@@ -100,7 +100,8 @@ def _tea_type_kb() -> InlineKeyboardBuilder:
     for code, label in TEA_TYPES.items():
         emoji = TEA_TYPE_EMOJI[code]
         kb.button(text=f"{emoji} {label}", callback_data=f"tt:{code}")
-    kb.adjust(3, 3, 3)
+    kb.button(text="✏️ Свой вид", callback_data="tt:custom")
+    kb.adjust(3, 3, 3, 1)
     return kb
 
 
@@ -118,9 +119,16 @@ def _tags_kb(selected: set[str]) -> InlineKeyboardBuilder:
     for tag in TASTE_TAGS:
         mark = "✅ " if tag in selected else ""
         kb.button(text=f"{mark}{tag}", callback_data=f"ttag:{tag}")
+    custom = selected - set(TASTE_TAGS)
+    for tag in sorted(custom):
+        kb.button(text=f"✅ {tag}", callback_data=f"ttag:{tag}")
+    kb.button(text="✏️ Свой тег", callback_data="ttag:custom")
     kb.button(text="✔️ Готово", callback_data="ttag:done")
     kb.button(text="Пропустить", callback_data="ttag:skip")
-    kb.adjust(2, 2, 2, 2, 2, 2, 2, 2, 2, 2, 1, 1)
+    total_tags = len(TASTE_TAGS) + len(custom)
+    rows = [2] * (total_tags // 2) + ([1] if total_tags % 2 else [])
+    rows += [1, 1, 1]
+    kb.adjust(*rows)
     return kb
 
 
@@ -134,6 +142,8 @@ def _cha_qi_kb() -> InlineKeyboardBuilder:
 
 
 def _type_label(code: str) -> str:
+    if code.startswith("custom:"):
+        return f"🍵 {code[7:]}"
     emoji = TEA_TYPE_EMOJI.get(code, "🍵")
     name = TEA_TYPES.get(code, code)
     return f"{emoji} {name}"
@@ -203,46 +213,68 @@ async def tea_profile_start(callback: CallbackQuery, state: FSMContext) -> None:
     await callback.answer()
 
 
+def _profile_types_kb(selected: set[str]) -> InlineKeyboardBuilder:
+    kb = InlineKeyboardBuilder()
+    for c, label in TEA_TYPES.items():
+        emoji = TEA_TYPE_EMOJI[c]
+        mark = "✅ " if c in selected else ""
+        kb.button(text=f"{mark}{emoji} {label}", callback_data=f"tt:{c}")
+    custom = {s for s in selected if s.startswith("custom:")}
+    for c in sorted(custom):
+        name = c[7:]
+        kb.button(text=f"✅ 🍵 {name}", callback_data=f"tt:{c}")
+    kb.button(text="✏️ Свой вид", callback_data="tt:custom")
+    kb.button(text="✔️ Готово", callback_data="tp:types_done")
+    total = len(TEA_TYPES) + len(custom)
+    rows = [3] * (total // 3) + ([total % 3] if total % 3 else [])
+    rows += [1, 1]
+    kb.adjust(*rows)
+    return kb
+
+
 @router.message(TeaProfileFlow.story)
 async def tea_profile_story(message: Message, state: FSMContext) -> None:
     text = (message.text or "").strip()
     story = None if text.lower() in ("пропустить", "skip", "-") else text
     await state.update_data(tea_story=story)
     await state.set_state(TeaProfileFlow.types)
-    kb = _tea_type_kb()
-    kb.button(text="✔️ Готово", callback_data="tp:types_done")
-    kb.adjust(3, 3, 3, 1)
     await message.answer(
         "❤️ <b>Любимые виды чая</b>\n\n"
         "Выбери один или несколько (нажимай, потом «Готово»):",
-        reply_markup=kb.as_markup(),
+        reply_markup=_profile_types_kb(set()).as_markup(),
     )
 
 
-@router.callback_query(F.data.startswith("tp:tt:"), TeaProfileFlow.types)
-async def tea_profile_toggle_type(callback: CallbackQuery, state: FSMContext) -> None:
-    code = callback.data[6:]
-    data = await state.get_data()
-    selected = set(data.get("profile_types", "").split(",")) - {""}
-    if code in selected:
-        selected.discard(code)
-    else:
-        selected.add(code)
-    await state.update_data(profile_types=",".join(selected))
-
-    kb = InlineKeyboardBuilder()
-    for c, label in TEA_TYPES.items():
-        emoji = TEA_TYPE_EMOJI[c]
-        mark = "✅ " if c in selected else ""
-        kb.button(text=f"{mark}{emoji} {label}", callback_data=f"tp:tt:{c}")
-    kb.button(text="✔️ Готово", callback_data="tp:types_done")
-    kb.adjust(3, 3, 3, 1)
-    await callback.message.edit_reply_markup(reply_markup=kb.as_markup())
+@router.callback_query(F.data == "tt:custom", TeaProfileFlow.types)
+async def tea_profile_type_custom(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(TeaProfileFlow.custom_type)
+    await callback.message.answer(
+        "✏️ Напиши свой вид чая (например: габа, жасминовый, бай му дань):"
+    )
     await callback.answer()
 
 
+@router.message(TeaProfileFlow.custom_type)
+async def tea_profile_type_custom_text(message: Message, state: FSMContext) -> None:
+    text = (message.text or "").strip()[:30]
+    if not text:
+        await message.answer("Введи название вида чая:")
+        return
+    code = f"custom:{text}"
+    data = await state.get_data()
+    selected = set(data.get("profile_types", "").split(",")) - {""}
+    selected.add(code)
+    await state.update_data(profile_types=",".join(selected))
+    await state.set_state(TeaProfileFlow.types)
+    await message.answer(
+        f"✅ Вид «{esc(text)}» добавлен.\n\n"
+        "❤️ Выбирай ещё или нажми «Готово»:",
+        reply_markup=_profile_types_kb(selected).as_markup(),
+    )
+
+
 @router.callback_query(F.data.startswith("tt:"), TeaProfileFlow.types)
-async def tea_profile_toggle_type_alt(callback: CallbackQuery, state: FSMContext) -> None:
+async def tea_profile_toggle_type(callback: CallbackQuery, state: FSMContext) -> None:
     code = callback.data[3:]
     data = await state.get_data()
     selected = set(data.get("profile_types", "").split(",")) - {""}
@@ -251,15 +283,7 @@ async def tea_profile_toggle_type_alt(callback: CallbackQuery, state: FSMContext
     else:
         selected.add(code)
     await state.update_data(profile_types=",".join(selected))
-
-    kb = InlineKeyboardBuilder()
-    for c, label in TEA_TYPES.items():
-        emoji = TEA_TYPE_EMOJI[c]
-        mark = "✅ " if c in selected else ""
-        kb.button(text=f"{mark}{emoji} {label}", callback_data=f"tt:{c}")
-    kb.button(text="✔️ Готово", callback_data="tp:types_done")
-    kb.adjust(3, 3, 3, 1)
-    await callback.message.edit_reply_markup(reply_markup=kb.as_markup())
+    await callback.message.edit_reply_markup(reply_markup=_profile_types_kb(selected).as_markup())
     await callback.answer()
 
 
@@ -300,6 +324,12 @@ async def tea_profile_toggle_taste(
         await callback.answer()
         return
 
+    if tag == "custom":
+        await state.set_state(TeaProfileFlow.custom_taste)
+        await callback.message.answer("✏️ Напиши свой вкусовой тег:")
+        await callback.answer()
+        return
+
     selected = data.get("profile_tastes", set())
     if not isinstance(selected, set):
         selected = set()
@@ -310,6 +340,26 @@ async def tea_profile_toggle_taste(
     await state.update_data(profile_tastes=selected)
     await callback.message.edit_reply_markup(reply_markup=_tags_kb(selected).as_markup())
     await callback.answer()
+
+
+@router.message(TeaProfileFlow.custom_taste)
+async def tea_profile_custom_taste_text(message: Message, state: FSMContext) -> None:
+    text = (message.text or "").strip().lower()[:25]
+    if not text:
+        await message.answer("Введи вкусовой тег:")
+        return
+    data = await state.get_data()
+    selected = data.get("profile_tastes", set())
+    if not isinstance(selected, set):
+        selected = set()
+    selected.add(text)
+    await state.update_data(profile_tastes=selected)
+    await state.set_state(TeaProfileFlow.tastes)
+    await message.answer(
+        f"✅ Тег «{esc(text)}» добавлен.\n\n"
+        "👅 Выбирай ещё или нажми «Готово»:",
+        reply_markup=_tags_kb(selected).as_markup(),
+    )
 
 
 # ==================== Запись чаепития ====================
@@ -346,6 +396,31 @@ async def tea_session_name(message: Message, state: FSMContext) -> None:
     await message.answer(
         f"🍵 <b>{esc(name)}</b>\n\nВыбери вид чая:",
         reply_markup=_tea_type_kb().as_markup(),
+    )
+
+
+@router.callback_query(F.data == "tt:custom", TeaSessionFlow.tea_type)
+async def tea_session_type_custom(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(TeaSessionFlow.custom_type)
+    await callback.message.answer(
+        "✏️ Напиши свой вид чая (например: габа, жасминовый, бай му дань):"
+    )
+    await callback.answer()
+
+
+@router.message(TeaSessionFlow.custom_type)
+async def tea_session_type_custom_text(message: Message, state: FSMContext) -> None:
+    text = (message.text or "").strip()[:30]
+    if not text:
+        await message.answer("Введи название вида чая:")
+        return
+    await state.update_data(tea_type=f"custom:{text}")
+    await state.set_state(TeaSessionFlow.rating)
+    data = await state.get_data()
+    await message.answer(
+        f"🍵 <b>{esc(data['tea_name'])}</b> — 🍵 {esc(text)}\n\n"
+        "⭐ Оценка (1–10):",
+        reply_markup=_rating_kb().as_markup(),
     )
 
 
@@ -398,6 +473,12 @@ async def tea_session_tags(callback: CallbackQuery, state: FSMContext) -> None:
         await callback.answer()
         return
 
+    if tag == "custom":
+        await state.set_state(TeaSessionFlow.custom_tag)
+        await callback.message.answer("✏️ Напиши свой вкусовой тег:")
+        await callback.answer()
+        return
+
     selected = data.get("tea_tags", set())
     if not isinstance(selected, set):
         selected = set()
@@ -408,6 +489,26 @@ async def tea_session_tags(callback: CallbackQuery, state: FSMContext) -> None:
     await state.update_data(tea_tags=selected)
     await callback.message.edit_reply_markup(reply_markup=_tags_kb(selected).as_markup())
     await callback.answer()
+
+
+@router.message(TeaSessionFlow.custom_tag)
+async def tea_session_custom_tag_text(message: Message, state: FSMContext) -> None:
+    text = (message.text or "").strip().lower()[:25]
+    if not text:
+        await message.answer("Введи вкусовой тег:")
+        return
+    data = await state.get_data()
+    selected = data.get("tea_tags", set())
+    if not isinstance(selected, set):
+        selected = set()
+    selected.add(text)
+    await state.update_data(tea_tags=selected)
+    await state.set_state(TeaSessionFlow.tags)
+    await message.answer(
+        f"✅ Тег «{esc(text)}» добавлен.\n\n"
+        "👅 Выбирай ещё или нажми «Готово»:",
+        reply_markup=_tags_kb(selected).as_markup(),
+    )
 
 
 @router.message(TeaSessionFlow.notes)
