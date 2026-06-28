@@ -81,6 +81,12 @@ CHA_QI_OPTIONS = {
 PAGE_SIZE = 5
 
 
+def _trim_for_cb(prefix: str, text: str) -> str:
+    while len((prefix + text).encode()) > 64:
+        text = text[:-1]
+    return text
+
+
 def _tea_menu_kb(user: User | None = None) -> InlineKeyboardBuilder:
     kb = InlineKeyboardBuilder()
     kb.button(text="🍵 Записать чаепитие", callback_data="tea:write")
@@ -118,10 +124,12 @@ def _tags_kb(selected: set[str]) -> InlineKeyboardBuilder:
     kb = InlineKeyboardBuilder()
     for tag in TASTE_TAGS:
         mark = "✅ " if tag in selected else ""
-        kb.button(text=f"{mark}{tag}", callback_data=f"ttag:{tag}")
+        cb = _trim_for_cb("ttag:", tag)
+        kb.button(text=f"{mark}{tag}", callback_data=f"ttag:{cb}")
     custom = selected - set(TASTE_TAGS)
     for tag in sorted(custom):
-        kb.button(text=f"✅ {tag}", callback_data=f"ttag:{tag}")
+        cb = _trim_for_cb("ttag:", tag)
+        kb.button(text=f"✅ {tag}", callback_data=f"ttag:{cb}")
     kb.button(text="✏️ Свой тег", callback_data="ttag:custom")
     kb.button(text="✔️ Готово", callback_data="ttag:done")
     kb.button(text="Пропустить", callback_data="ttag:skip")
@@ -222,7 +230,8 @@ def _profile_types_kb(selected: set[str]) -> InlineKeyboardBuilder:
     custom = {s for s in selected if s.startswith("custom:")}
     for c in sorted(custom):
         name = c[7:]
-        kb.button(text=f"✅ 🍵 {name}", callback_data=f"tt:{c}")
+        cb = _trim_for_cb("tt:", c)
+        kb.button(text=f"✅ 🍵 {name}", callback_data=f"tt:{cb}")
     kb.button(text="✏️ Свой вид", callback_data="tt:custom")
     kb.button(text="✔️ Готово", callback_data="tp:types_done")
     total = len(TEA_TYPES) + len(custom)
@@ -256,7 +265,7 @@ async def tea_profile_type_custom(callback: CallbackQuery, state: FSMContext) ->
 
 @router.message(TeaProfileFlow.custom_type)
 async def tea_profile_type_custom_text(message: Message, state: FSMContext) -> None:
-    text = (message.text or "").strip()[:30]
+    text = _trim_for_cb("tt:custom:", (message.text or "").strip())
     if not text:
         await message.answer("Введи название вида чая:")
         return
@@ -344,7 +353,7 @@ async def tea_profile_toggle_taste(
 
 @router.message(TeaProfileFlow.custom_taste)
 async def tea_profile_custom_taste_text(message: Message, state: FSMContext) -> None:
-    text = (message.text or "").strip().lower()[:25]
+    text = _trim_for_cb("ttag:", (message.text or "").strip().lower())
     if not text:
         await message.answer("Введи вкусовой тег:")
         return
@@ -410,7 +419,7 @@ async def tea_session_type_custom(callback: CallbackQuery, state: FSMContext) ->
 
 @router.message(TeaSessionFlow.custom_type)
 async def tea_session_type_custom_text(message: Message, state: FSMContext) -> None:
-    text = (message.text or "").strip()[:30]
+    text = _trim_for_cb("tt:custom:", (message.text or "").strip())
     if not text:
         await message.answer("Введи название вида чая:")
         return
@@ -493,7 +502,7 @@ async def tea_session_tags(callback: CallbackQuery, state: FSMContext) -> None:
 
 @router.message(TeaSessionFlow.custom_tag)
 async def tea_session_custom_tag_text(message: Message, state: FSMContext) -> None:
-    text = (message.text or "").strip().lower()[:25]
+    text = _trim_for_cb("ttag:", (message.text or "").strip().lower())
     if not text:
         await message.answer("Введи вкусовой тег:")
         return
