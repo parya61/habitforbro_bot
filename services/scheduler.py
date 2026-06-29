@@ -9,8 +9,11 @@
 from __future__ import annotations
 
 import calendar
+import logging
 from datetime import date, timedelta
 from zoneinfo import ZoneInfo
+
+logger = logging.getLogger("habits-bot")
 
 from aiogram import Bot
 from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
@@ -193,16 +196,19 @@ async def _check_month_end() -> None:
     if today.day != last_day:
         return
 
+    logger.info("PRIZE | Последний день месяца — подводим итоги")
     month_str = today.strftime("%Y-%m")
     month_start = today.replace(day=1)
 
     async with get_session() as session:
         prize = await get_prize(session, month_str)
         if prize and prize.winner_user_id is not None:
+            logger.info("PRIZE | %s — итоги уже объявлены, пропускаем", month_str)
             return
 
         top3 = await _compute_top3(session, month_start, today)
         if not top3:
+            logger.warning("PRIZE | %s — нет данных для топа, пропускаем", month_str)
             return
 
         medals = ["\U0001f947", "\U0001f948", "\U0001f949"]
@@ -217,6 +223,11 @@ async def _check_month_end() -> None:
                 f" — {pct}% ({done}/{planned})"
             )
             winner_ids.append(user.id)
+            logger.info(
+                "PRIZE | %s %s: %s (tg=%d) — %d%% (%d/%d)",
+                month_str, places[i], display_name(user),
+                user.telegram_id, pct, done, planned,
+            )
 
         lines.append("\n\U0001f381 Призы — VPN Helsinki (\U0001f1eb\U0001f1ee Финляндия) на месяц!")
         lines.append("Нажми кнопку ниже, чтобы получить свой приз.")
@@ -231,12 +242,15 @@ async def _check_month_end() -> None:
             winner_ids[1] if len(winner_ids) > 1 else None,
             winner_ids[2] if len(winner_ids) > 2 else None,
         )
+        logger.info("PRIZE | %s — победители сохранены в БД", month_str)
 
         text = "\n".join(lines)
 
         # Всем пользователям — итоги без кнопок
-        for user in await list_users(session):
+        users = await list_users(session)
+        for user in users:
             await _safe_send(user.telegram_id, text)
+        logger.info("PRIZE | Итоги отправлены %d пользователям", len(users))
 
         # Победителям — персональное сообщение с кнопкой
         for i, (winner, rate, done, planned) in enumerate(top3):
@@ -251,12 +265,17 @@ async def _check_month_end() -> None:
                 f"Нажми кнопку, чтобы получить VPN Helsinki:",
                 markup=prize_markup,
             )
+            logger.info(
+                "PRIZE | Кнопка «Забрать приз» отправлена: %s (tg=%d)",
+                display_name(winner), winner.telegram_id,
+            )
 
 
 async def _month_start_announce() -> None:
     """1-го числа в 10:00 — объявляем приз нового месяца."""
     today = date.today()
     month_str = today.strftime("%Y-%m")
+    logger.info("PRIZE | Объявляем приз месяца %s", month_str)
 
     text = (
         f"\U0001f389 <b>Новый месяц — новый приз!</b>\n\n"
@@ -268,8 +287,10 @@ async def _month_start_announce() -> None:
     )
 
     async with get_session() as session:
-        for user in await list_users(session):
+        users = await list_users(session)
+        for user in users:
             await _safe_send(user.telegram_id, text)
+        logger.info("PRIZE | Анонс отправлен %d пользователям", len(users))
 
 
 async def _safe_send(chat_id: int, text: str, markup=None) -> None:

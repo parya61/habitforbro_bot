@@ -1,7 +1,10 @@
 """Раздел «Призы»: текущий приз, лидер месяца, история победителей, получение VPN."""
 from __future__ import annotations
 
+import logging
 from datetime import date, timedelta
+
+logger = logging.getLogger("habits-bot")
 
 from aiogram import F, Router
 from aiogram.filters import Command
@@ -118,6 +121,10 @@ async def claim_vpn_prize(
     }
 
     if winner_map.get(place) != user.id:
+        logger.info(
+            "PRIZE | Попытка забрать чужой приз: tg=%d, месяц=%s, место=%d",
+            user.telegram_id, month_str, place,
+        )
         await callback.answer(
             "Этот приз предназначен другому победителю \U0001f60a",
             show_alert=True,
@@ -142,7 +149,15 @@ async def claim_vpn_prize(
                 user.telegram_id, text, disable_web_page_preview=True
             )
             await callback.answer("Приз отправлен тебе в личку! \U0001f389", show_alert=True)
-        except Exception:
+            logger.info(
+                "PRIZE | Приз выдан: tg=%d (%s), месяц=%s, место=%d, url=%s",
+                user.telegram_id, display_name(user), month_str, place, url,
+            )
+        except Exception as e:
+            logger.error(
+                "PRIZE | Не удалось отправить приз: tg=%d, ошибка=%s",
+                user.telegram_id, e,
+            )
             await callback.answer(
                 "Не получилось отправить в ЛС. Напиши боту /start и попробуй снова.",
                 show_alert=True,
