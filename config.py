@@ -25,6 +25,8 @@ class Config:
     allowed_ids: set[int] = field(default_factory=set)
     default_timezone: str = "Europe/Moscow"
     db_path: str = "habits.db"
+    group_chat_id: int | None = None
+    vpn_prize_urls: list[str] = field(default_factory=list)
 
     @property
     def db_url(self) -> str:
@@ -43,6 +45,15 @@ def load_config() -> Config:
     admin_raw = os.getenv("ADMIN_ID", "0").strip()
     admin_id = int(admin_raw) if admin_raw.isdigit() else 0
 
+    group_raw = os.getenv("GROUP_CHAT_ID", "").strip()
+    group_chat_id = int(group_raw) if group_raw.lstrip("-").isdigit() else None
+
+    vpn_urls = []
+    for key in ("VPN_PRIZE_1ST", "VPN_PRIZE_2ND", "VPN_PRIZE_3RD"):
+        url = os.getenv(key, "").strip()
+        if url:
+            vpn_urls.append(url)
+
     return Config(
         bot_token=token,
         admin_id=admin_id,
@@ -50,6 +61,8 @@ def load_config() -> Config:
         allowed_ids=_parse_ids(os.getenv("ALLOWED_IDS", "")),
         default_timezone=os.getenv("DEFAULT_TIMEZONE", "Europe/Moscow").strip(),
         db_path=os.getenv("DB_PATH", "habits.db").strip(),
+        group_chat_id=group_chat_id,
+        vpn_prize_urls=vpn_urls,
     )
 
 

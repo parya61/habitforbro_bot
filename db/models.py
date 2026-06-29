@@ -153,9 +153,17 @@ class Prize(Base):
     winner_user_id: Mapped[int | None] = mapped_column(
         ForeignKey("users.id"), nullable=True
     )
+    winner_2_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
+    winner_3_user_id: Mapped[int | None] = mapped_column(
+        ForeignKey("users.id"), nullable=True
+    )
     announced_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
-    winner: Mapped["User | None"] = relationship()
+    winner: Mapped["User | None"] = relationship(foreign_keys=[winner_user_id])
+    winner_2: Mapped["User | None"] = relationship(foreign_keys=[winner_2_user_id])
+    winner_3: Mapped["User | None"] = relationship(foreign_keys=[winner_3_user_id])
 
 
 class TeaProfile(Base):

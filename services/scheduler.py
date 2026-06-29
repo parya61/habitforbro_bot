@@ -4,16 +4,20 @@
 - Утреннее сообщение со списком привычек на день.
 - Вечернее напоминание тем, кто ещё не отметился.
 - Еженедельный отчёт в воскресенье вечером.
+- Ежемесячные итоги с топ-3 и призами VPN.
 """
 from __future__ import annotations
 
+import calendar
 from datetime import date, timedelta
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot
+from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
 
+from config import config
 from db.database import get_session
 from db.queries import (
     get_log,
@@ -22,7 +26,8 @@ from db.queries import (
     list_habits,
     list_public_habits,
     list_users,
-    set_prize_winner,
+    set_prize,
+    set_prize_winners,
 )
 from services.stats import user_stats
 from services.streaks import completion_rate, is_scheduled
@@ -40,12 +45,10 @@ def _tz(name: str) -> ZoneInfo:
 
 
 async def setup_scheduler(bot: Bot) -> None:
-    """Создаёт планировщик, регистрирует общие задачи и напоминания привычек."""
     global _scheduler, _bot
     _bot = bot
     _scheduler = AsyncIOScheduler()
 
-    # Общие рассылки (время в Europe/Moscow как база; индивидуальная фильтрация в задачах).
     base_tz = ZoneInfo("Europe/Moscow")
     _scheduler.add_job(_morning_broadcast, CronTrigger(hour=8, minute=0, timezone=base_tz))
     _scheduler.add_job(_evening_broadcast, CronTrigger(hour=21, minute=0, timezone=base_tz))
@@ -54,11 +57,14 @@ async def setup_scheduler(bot: Bot) -> None:
         CronTrigger(day_of_week="sun", hour=20, minute=0, timezone=base_tz),
     )
     _scheduler.add_job(
-        _monthly_prize_winner,
-        CronTrigger(day=1, hour=0, minute=5, timezone=base_tz),
+        _check_month_end,
+        CronTrigger(hour=21, minute=0, timezone=base_tz),
+    )
+    _scheduler.add_job(
+        _month_start_announce,
+        CronTrigger(day=1, hour=10, minute=0, timezone=base_tz),
     )
 
-    # Персональные напоминания по каждой активной привычке с указанным временем.
     async with get_session() as session:
         for user in await list_users(session):
             for habit in await list_habits(session, user.id):
@@ -69,7 +75,6 @@ async def setup_scheduler(bot: Bot) -> None:
 
 
 def schedule_habit_reminder(bot: Bot, habit, user) -> None:
-    """Регистрирует (или обновляет) напоминание для конкретной привычки."""
     if _scheduler is None or not habit.remind_time:
         return
     hour, minute = (int(x) for x in habit.remind_time.split(":"))
@@ -84,7 +89,6 @@ def schedule_habit_reminder(bot: Bot, habit, user) -> None:
 
 
 def remove_habit_reminder(habit_id: int) -> None:
-    """Снимает напоминание (например, при архивации привычки)."""
     if _scheduler is None:
         return
     job = _scheduler.get_job(f"habit_{habit_id}")
@@ -104,8 +108,8 @@ async def _habit_reminder(telegram_id: int, habit_id: int) -> None:
             return
         log = await get_log(session, habit_id, today)
         if log and log.done:
-            return  # уже выполнено сегодня
-    await _safe_send(telegram_id, f"⏰ Пора: {habit.emoji} {habit.title}!")
+            return
+    await _safe_send(telegram_id, "⏰ Пора: {e} {t}!".format(e=habit.emoji, t=habit.title))
 
 
 async def _morning_broadcast() -> None:
@@ -142,7 +146,7 @@ async def _evening_broadcast() -> None:
             names = ", ".join(f"{h.emoji} {h.title}" for h in pending)
             await _safe_send(
                 user.telegram_id,
-                f"🌙 Не забудь отметить: {names}\nИ загляни в дневник 📔",
+                f"\U0001f319 Не забудь отметить: {names}\nИ загляни в дневник \U0001f4d4",
             )
 
 
@@ -152,73 +156,125 @@ async def _weekly_report() -> None:
         for user in users:
             stats = await user_stats(session, user.id)
             text = (
-                "📅 <b>Итоги недели</b>\n"
+                "\U0001f4c5 <b>Итоги недели</b>\n"
                 f"Выполнено: {stats.week_done}/{stats.week_planned} "
                 f"({stats.week_percent}%)\n"
-                f"🏆 Рекорд серии: {stats.record_streak} дн.\n"
+                f"\U0001f3c6 Рекорд серии: {stats.record_streak} дн.\n"
                 f"Активных привычек: {stats.active_habits}\n\n"
-                "Так держать! Новая неделя — новые серии 🔥"
+                "Так держать! Новая неделя — новые серии \U0001f525"
             )
             await _safe_send(user.telegram_id, text)
 
 
-async def _monthly_prize_winner() -> None:
+async def _compute_top3(session, month_start: date, month_end: date):
+    """Вычисляет топ-3 по проценту выполнения публичных привычек."""
+    scores = []
+    for user in await list_users(session):
+        habits = await list_public_habits(session, user.id)
+        if not habits:
+            continue
+        total_done = total_planned = 0
+        for h in habits:
+            d, p = await completion_rate(session, h, month_start, month_end)
+            total_done += d
+            total_planned += p
+        rate = total_done / total_planned if total_planned > 0 else 0
+        if rate > 0:
+            scores.append((user, rate, total_done, total_planned))
+    scores.sort(key=lambda x: (-x[1], -x[2]))
+    return scores[:3]
+
+
+async def _check_month_end() -> None:
+    """Каждый день в 21:00 проверяет — последний ли день месяца.
+    Если да — подводит итоги и постит в группу."""
     today = date.today()
-    last_day = today - timedelta(days=1)
-    month_str = last_day.strftime("%Y-%m")
-    month_start = last_day.replace(day=1)
+    last_day = calendar.monthrange(today.year, today.month)[1]
+    if today.day != last_day:
+        return
+
+    month_str = today.strftime("%Y-%m")
+    month_start = today.replace(day=1)
 
     async with get_session() as session:
         prize = await get_prize(session, month_str)
-        if not prize or prize.winner_user_id is not None:
+        if prize and prize.winner_user_id is not None:
             return
 
-        best_user = None
-        best_rate = -1.0
-        for user in await list_users(session):
-            habits = await list_public_habits(session, user.id)
-            if not habits:
-                continue
-            total_done = total_planned = 0
-            for h in habits:
-                d, p = await completion_rate(session, h, month_start, last_day)
-                total_done += d
-                total_planned += p
-            rate = total_done / total_planned if total_planned > 0 else 0
-            if rate > best_rate:
-                best_rate = rate
-                best_user = user
-
-        if not best_user or best_rate <= 0:
+        top3 = await _compute_top3(session, month_start, today)
+        if not top3:
             return
 
-        await set_prize_winner(session, prize, best_user.id)
+        medals = ["\U0001f947", "\U0001f948", "\U0001f949"]
+        places = ["1 место", "2 место", "3 место"]
 
-        text = (
-            f"🎉 <b>Поздравляем!</b>\n\n"
-            f"Ты победитель месяца ({month_str}) "
-            f"с результатом {round(best_rate * 100)}%!\n\n"
-            f"🎁 Твой приз: {prize.description}"
+        lines = [f"\U0001f3c6 <b>Итоги месяца {month_str}</b>\n"]
+        winner_ids = []
+        for i, (user, rate, done, planned) in enumerate(top3):
+            pct = round(rate * 100)
+            lines.append(
+                f"{medals[i]} <b>{places[i]}</b>: {esc(display_name(user))}"
+                f" — {pct}% ({done}/{planned})"
+            )
+            winner_ids.append(user.id)
+
+        lines.append("\n\U0001f381 Призы — VPN Helsinki (\U0001f1eb\U0001f1ee Финляндия) на месяц!")
+        lines.append("Нажми кнопку ниже, чтобы получить свой приз.")
+
+        if not prize:
+            prize = await set_prize(session, month_str, "VPN Helsinki на 1 месяц", None)
+
+        await set_prize_winners(
+            session,
+            prize,
+            winner_ids[0] if len(winner_ids) > 0 else None,
+            winner_ids[1] if len(winner_ids) > 1 else None,
+            winner_ids[2] if len(winner_ids) > 2 else None,
         )
-        if prize.prize_code:
-            text += f"\n\n🔑 Код: <tg-spoiler>{prize.prize_code}</tg-spoiler>"
-        await _safe_send(best_user.telegram_id, text)
 
-        winner_name = display_name(best_user)
+        buttons = []
+        for i in range(len(top3)):
+            buttons.append([InlineKeyboardButton(
+                text=f"{medals[i]} Забрать приз ({places[i]})",
+                callback_data=f"claim_vpn:{month_str}:{i + 1}",
+            )])
+        markup = InlineKeyboardMarkup(inline_keyboard=buttons)
+
+        text = "\n".join(lines)
+
+        if config.group_chat_id:
+            await _safe_send(config.group_chat_id, text, markup=markup)
+
         for user in await list_users(session):
-            if user.id != best_user.id:
-                await _safe_send(
-                    user.telegram_id,
-                    f"🏆 Победитель месяца ({month_str}): "
-                    f"{esc(winner_name)} с результатом {round(best_rate * 100)}%!",
-                )
+            await _safe_send(user.telegram_id, text)
 
 
-async def _safe_send(telegram_id: int, text: str) -> None:
-    """Отправка с защитой от ошибок (пользователь заблокировал бота и т.п.)."""
+async def _month_start_announce() -> None:
+    """1-го числа в 10:00 — объявляем приз нового месяца."""
+    today = date.today()
+    month_str = today.strftime("%Y-%m")
+
+    text = (
+        f"\U0001f389 <b>Новый месяц — новый приз!</b>\n\n"
+        f"\U0001f4c5 {month_str}\n"
+        f"\U0001f381 Приз: <b>VPN Helsinki</b> (\U0001f1eb\U0001f1ee Финляндия) на 1 месяц\n"
+        f"\U0001f310 WireGuard, до 18 Мбит/с, безлимитный трафик\n\n"
+        f"Топ-3 по выполнению публичных привычек получат персональный VPN!\n"
+        f"Старайтесь и не пропускайте привычки \U0001f4aa"
+    )
+
+    if config.group_chat_id:
+        await _safe_send(config.group_chat_id, text)
+
+    async with get_session() as session:
+        for user in await list_users(session):
+            await _safe_send(user.telegram_id, text)
+
+
+async def _safe_send(chat_id: int, text: str, markup=None) -> None:
     if _bot is None:
         return
     try:
-        await _bot.send_message(telegram_id, text)
+        await _bot.send_message(chat_id, text, reply_markup=markup)
     except Exception:
         pass

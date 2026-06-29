@@ -290,6 +290,23 @@ async def set_prize_winner(
     await session.commit()
 
 
+
+
+async def set_prize_winners(
+    session: AsyncSession,
+    prize: Prize,
+    winner_1_id: int | None,
+    winner_2_id: int | None = None,
+    winner_3_id: int | None = None,
+) -> None:
+    from datetime import datetime
+
+    prize.winner_user_id = winner_1_id
+    prize.winner_2_user_id = winner_2_id
+    prize.winner_3_user_id = winner_3_id
+    prize.announced_at = datetime.utcnow()
+    await session.commit()
+
 async def list_prizes(session: AsyncSession, limit: int = 12) -> list[Prize]:
     res = await session.execute(
         select(Prize).order_by(Prize.month.desc()).limit(limit)

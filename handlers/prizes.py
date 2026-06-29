@@ -1,13 +1,14 @@
-"""Раздел «Призы»: текущий приз, лидер месяца, история победителей."""
+"""Раздел «Призы»: текущий приз, лидер месяца, история победителей, получение VPN."""
 from __future__ import annotations
 
 from datetime import date, timedelta
 
 from aiogram import F, Router
 from aiogram.filters import Command
-from aiogram.types import Message
+from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from config import config
 from db.models import User
 from db.queries import (
     get_prize,
@@ -47,22 +48,29 @@ async def show_prizes(message: Message, session: AsyncSession, user: User) -> No
     current_month = today.strftime("%Y-%m")
     month_start = today.replace(day=1)
 
-    lines = ["🎁 <b>Призы</b>\n"]
+    lines = ["\U0001f381 <b>Призы</b>\n"]
 
     # Текущий месяц
     prize = await get_prize(session, current_month)
     if prize:
         lines.append(f"<b>Приз месяца ({current_month}):</b>")
-        lines.append(f"🎁 {esc(prize.description)}")
+        lines.append(f"\U0001f381 {esc(prize.description)}")
         if prize.winner_user_id:
-            lines.append(f"🏆 Победитель: {display_name(prize.winner)}")
-            if prize.winner_user_id == user.id and prize.prize_code:
-                lines.append(f"🔑 Твой код: <tg-spoiler>{esc(prize.prize_code)}</tg-spoiler>")
+            medals = ["\U0001f947", "\U0001f948", "\U0001f949"]
+            winners = [
+                (prize.winner, prize.winner_user_id),
+                (prize.winner_2, prize.winner_2_user_id),
+                (prize.winner_3, prize.winner_3_user_id),
+            ]
+            lines.append("\n<b>Победители:</b>")
+            for i, (w, wid) in enumerate(winners):
+                if w:
+                    lines.append(f"{medals[i]} {esc(display_name(w))}")
         else:
             leader, rate = await _current_leader(session, month_start, today)
             if leader:
                 lines.append(
-                    f"📊 Лидер сейчас: {esc(display_name(leader))} ({round(rate * 100)}%)"
+                    f"\U0001f4ca Лидер сейчас: {esc(display_name(leader))} ({round(rate * 100)}%)"
                 )
     else:
         lines.append("В этом месяце приз пока не установлен.")
@@ -80,6 +88,64 @@ async def show_prizes(message: Message, session: AsyncSession, user: User) -> No
 
 
 @router.message(Command("prizes"))
-@router.message(F.text == "🎁 Призы")
+@router.message(F.text == "\U0001f381 Призы")
 async def cmd_prizes(message: Message, session: AsyncSession, user: User) -> None:
     await show_prizes(message, session, user)
+
+
+@router.callback_query(F.data.startswith("claim_vpn:"))
+async def claim_vpn_prize(
+    callback: CallbackQuery, session: AsyncSession, user: User
+) -> None:
+    """Обработка кнопки 'Забрать приз' — проверяет, что нажавший является победителем."""
+    parts = callback.data.split(":")
+    if len(parts) != 3:
+        await callback.answer("Ошибка данных", show_alert=True)
+        return
+
+    month_str = parts[1]
+    place = int(parts[2])
+
+    prize = await get_prize(session, month_str)
+    if not prize:
+        await callback.answer("Приз не найден", show_alert=True)
+        return
+
+    winner_map = {
+        1: prize.winner_user_id,
+        2: prize.winner_2_user_id,
+        3: prize.winner_3_user_id,
+    }
+
+    if winner_map.get(place) != user.id:
+        await callback.answer(
+            "Этот приз предназначен другому победителю \U0001f60a",
+            show_alert=True,
+        )
+        return
+
+    # Отдаём ссылку на VPN-страницу
+    url_index = place - 1
+    if url_index < len(config.vpn_prize_urls):
+        url = config.vpn_prize_urls[url_index]
+        medals = ["\U0001f947", "\U0001f948", "\U0001f949"]
+        places_text = ["1 место", "2 место", "3 место"]
+        text = (
+            f"{medals[url_index]} <b>Поздравляем с {places_text[url_index]}!</b>\n\n"
+            f"\U0001f381 Твой приз — VPN Helsinki (\U0001f1eb\U0001f1ee Финляндия)\n\n"
+            f"\U0001f517 <b>Открой ссылку</b> — там QR-код и инструкция:\n{url}\n\n"
+            f"VPN действует до конца следующего месяца.\n"
+            f"Спасибо, что держишь привычки! \U0001f4aa"
+        )
+        try:
+            await callback.message.chat.bot.send_message(
+                user.telegram_id, text, disable_web_page_preview=True
+            )
+            await callback.answer("Приз отправлен тебе в личку! \U0001f389", show_alert=True)
+        except Exception:
+            await callback.answer(
+                "Не получилось отправить в ЛС. Напиши боту /start и попробуй снова.",
+                show_alert=True,
+            )
+    else:
+        await callback.answer("Ссылка на приз пока не настроена", show_alert=True)

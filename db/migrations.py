@@ -9,6 +9,8 @@ _COLUMN_MIGRATIONS = [
     ("habits", "description", "ALTER TABLE habits ADD COLUMN description TEXT"),
     ("users", "nickname", "ALTER TABLE users ADD COLUMN nickname VARCHAR(64)"),
     ("users", "tea_diary_private", "ALTER TABLE users ADD COLUMN tea_diary_private BOOLEAN DEFAULT 0"),
+    ("prizes", "winner_2_user_id", "ALTER TABLE prizes ADD COLUMN winner_2_user_id INTEGER REFERENCES users(id)"),
+    ("prizes", "winner_3_user_id", "ALTER TABLE prizes ADD COLUMN winner_3_user_id INTEGER REFERENCES users(id)"),
 ]
 
 
