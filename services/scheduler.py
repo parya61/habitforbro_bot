@@ -287,6 +287,11 @@ async def _month_start_announce() -> None:
     )
 
     async with get_session() as session:
+        prize = await get_prize(session, month_str)
+        if not prize:
+            await set_prize(session, month_str, "VPN Helsinki \U0001f1eb\U0001f1ee на 1 месяц", None)
+            logger.info("PRIZE | Запись приза создана в БД: %s", month_str)
+
         users = await list_users(session)
         for user in users:
             await _safe_send(user.telegram_id, text)
