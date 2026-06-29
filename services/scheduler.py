@@ -232,21 +232,25 @@ async def _check_month_end() -> None:
             winner_ids[2] if len(winner_ids) > 2 else None,
         )
 
-        buttons = []
-        for i in range(len(top3)):
-            buttons.append([InlineKeyboardButton(
-                text=f"{medals[i]} Забрать приз ({places[i]})",
-                callback_data=f"claim_vpn:{month_str}:{i + 1}",
-            )])
-        markup = InlineKeyboardMarkup(inline_keyboard=buttons)
-
         text = "\n".join(lines)
 
-        if config.group_chat_id:
-            await _safe_send(config.group_chat_id, text, markup=markup)
-
+        # Всем пользователям — итоги без кнопок
         for user in await list_users(session):
             await _safe_send(user.telegram_id, text)
+
+        # Победителям — персональное сообщение с кнопкой
+        for i, (winner, rate, done, planned) in enumerate(top3):
+            btn = InlineKeyboardButton(
+                text=f"{medals[i]} Забрать приз",
+                callback_data=f"claim_vpn:{month_str}:{i + 1}",
+            )
+            prize_markup = InlineKeyboardMarkup(inline_keyboard=[[btn]])
+            await _safe_send(
+                winner.telegram_id,
+                f"{medals[i]} <b>Поздравляем, ты в топ-3!</b>\n"
+                f"Нажми кнопку, чтобы получить VPN Helsinki:",
+                markup=prize_markup,
+            )
 
 
 async def _month_start_announce() -> None:
@@ -262,9 +266,6 @@ async def _month_start_announce() -> None:
         f"Топ-3 по выполнению публичных привычек получат персональный VPN!\n"
         f"Старайтесь и не пропускайте привычки \U0001f4aa"
     )
-
-    if config.group_chat_id:
-        await _safe_send(config.group_chat_id, text)
 
     async with get_session() as session:
         for user in await list_users(session):
