@@ -171,6 +171,25 @@ class TeaProfile(Base):
     user: Mapped["User"] = relationship()
 
 
+class TeaCollection(Base):
+    __tablename__ = "tea_collection"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    tea_name: Mapped[str] = mapped_column(String(256))
+    tea_type: Mapped[str] = mapped_column(String(32))
+    weight_grams: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    remaining_grams: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    price: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    vendor: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    year: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship()
+
+
 class TeaSession(Base):
     __tablename__ = "tea_sessions"
 

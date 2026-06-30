@@ -68,5 +68,31 @@ class TeaSessionFlow(StatesGroup):
     qi = State()           # ча ци
 
 
+class TeaEditFlow(StatesGroup):
+    name = State()         # новое название чая
+    notes = State()        # новые заметки
+    photo = State()        # добавить фото
+
+
+class TeaCollectionFlow(StatesGroup):
+    name = State()         # название чая
+    tea_type = State()     # вид чая
+    custom_type = State()  # свой вид чая
+    weight = State()       # вес в граммах
+    price = State()        # цена
+    vendor = State()       # продавец/магазин
+    year = State()         # год сбора
+    notes = State()        # заметки
+
+
+class TeaCollEditFlow(StatesGroup):
+    name = State()         # новое название
+    weight = State()       # новый вес
+    price = State()        # новая цена
+    vendor = State()       # новый продавец
+    notes = State()        # новые заметки
+    subtract = State()     # списать граммы
+
+
 class TeaMessageFlow(StatesGroup):
     text = State()         # текст сообщения о чае

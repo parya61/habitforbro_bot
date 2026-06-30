@@ -17,6 +17,7 @@ from db.models import (
     Habit,
     HabitLog,
     Prize,
+    TeaCollection,
     TeaProfile,
     TeaSession,
     User,
@@ -329,12 +330,13 @@ async def add_tea_session(session: AsyncSession, **fields) -> TeaSession:
 
 
 async def list_tea_sessions(
-    session: AsyncSession, user_id: int, limit: int = 20
+    session: AsyncSession, user_id: int, limit: int = 20, offset: int = 0
 ) -> list[TeaSession]:
     res = await session.execute(
         select(TeaSession)
         .where(TeaSession.user_id == user_id)
         .order_by(TeaSession.session_date.desc(), TeaSession.created_at.desc())
+        .offset(offset)
         .limit(limit)
     )
     return list(res.scalars().all())
@@ -424,5 +426,97 @@ async def get_tea_session(session: AsyncSession, ts_id: int) -> TeaSession | Non
         select(TeaSession)
         .options(joinedload(TeaSession.user))
         .where(TeaSession.id == ts_id)
+    )
+    return res.scalar_one_or_none()
+
+
+async def update_tea_session(session: AsyncSession, ts_id: int, **fields) -> TeaSession | None:
+    ts = await get_tea_session(session, ts_id)
+    if ts is None:
+        return None
+    for k, v in fields.items():
+        setattr(ts, k, v)
+    await session.commit()
+    await session.refresh(ts)
+    return ts
+
+
+async def delete_tea_session(session: AsyncSession, ts_id: int) -> bool:
+    ts = await get_tea_session(session, ts_id)
+    if ts is None:
+        return False
+    await session.delete(ts)
+    await session.commit()
+    return True
+
+
+# ---------- Чайная коллекция ----------
+
+async def add_tea_collection(session: AsyncSession, **fields) -> TeaCollection:
+    item = TeaCollection(**fields)
+    session.add(item)
+    await session.commit()
+    await session.refresh(item)
+    return item
+
+
+async def get_tea_collection_item(session: AsyncSession, item_id: int) -> TeaCollection | None:
+    res = await session.execute(
+        select(TeaCollection).where(TeaCollection.id == item_id)
+    )
+    return res.scalar_one_or_none()
+
+
+async def list_tea_collection(
+    session: AsyncSession, user_id: int, *, include_finished: bool = False
+) -> list[TeaCollection]:
+    stmt = select(TeaCollection).where(TeaCollection.user_id == user_id)
+    if not include_finished:
+        stmt = stmt.where(TeaCollection.status == "active")
+    stmt = stmt.order_by(TeaCollection.created_at.desc())
+    res = await session.execute(stmt)
+    return list(res.scalars().all())
+
+
+async def update_tea_collection_item(session: AsyncSession, item_id: int, **fields) -> TeaCollection | None:
+    item = await get_tea_collection_item(session, item_id)
+    if item is None:
+        return None
+    for k, v in fields.items():
+        setattr(item, k, v)
+    await session.commit()
+    await session.refresh(item)
+    return item
+
+
+async def delete_tea_collection_item(session: AsyncSession, item_id: int) -> bool:
+    item = await get_tea_collection_item(session, item_id)
+    if item is None:
+        return False
+    await session.delete(item)
+    await session.commit()
+    return True
+
+
+async def subtract_tea_grams(session: AsyncSession, item_id: int, grams: int) -> TeaCollection | None:
+    item = await get_tea_collection_item(session, item_id)
+    if item is None:
+        return None
+    if item.remaining_grams is not None:
+        item.remaining_grams = max(0, item.remaining_grams - grams)
+        if item.remaining_grams == 0:
+            item.status = "finished"
+    await session.commit()
+    await session.refresh(item)
+    return item
+
+
+async def get_random_tea(session: AsyncSession, user_id: int) -> TeaCollection | None:
+    from sqlalchemy.sql.expression import func
+    res = await session.execute(
+        select(TeaCollection)
+        .where(TeaCollection.user_id == user_id, TeaCollection.status == "active")
+        .order_by(func.random())
+        .limit(1)
     )
     return res.scalar_one_or_none()
