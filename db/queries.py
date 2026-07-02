@@ -20,6 +20,7 @@ from db.models import (
     TeaCollection,
     TeaProfile,
     TeaSession,
+    TeawareItem,
     User,
 )
 
@@ -347,15 +348,20 @@ async def add_tea_session(session: AsyncSession, **fields) -> TeaSession:
 
 
 async def list_tea_sessions(
-    session: AsyncSession, user_id: int, limit: int = 20, offset: int = 0
+    session: AsyncSession,
+    user_id: int,
+    limit: int = 20,
+    offset: int = 0,
+    tea_type: str | None = None,
+    min_rating: int | None = None,
 ) -> list[TeaSession]:
-    res = await session.execute(
-        select(TeaSession)
-        .where(TeaSession.user_id == user_id)
-        .order_by(TeaSession.session_date.desc(), TeaSession.created_at.desc())
-        .offset(offset)
-        .limit(limit)
-    )
+    q = select(TeaSession).where(TeaSession.user_id == user_id)
+    if tea_type:
+        q = q.where(TeaSession.tea_type == tea_type)
+    if min_rating:
+        q = q.where(TeaSession.rating >= min_rating)
+    q = q.order_by(TeaSession.session_date.desc(), TeaSession.created_at.desc())
+    res = await session.execute(q.offset(offset).limit(limit))
     return list(res.scalars().all())
 
 
@@ -537,3 +543,51 @@ async def get_random_tea(session: AsyncSession, user_id: int) -> TeaCollection |
         .limit(1)
     )
     return res.scalar_one_or_none()
+
+
+# ---------- Коллекция посуды ----------
+
+async def add_teaware_item(session: AsyncSession, **fields) -> TeawareItem:
+    item = TeawareItem(**fields)
+    session.add(item)
+    await session.commit()
+    await session.refresh(item)
+    return item
+
+
+async def get_teaware_item(session: AsyncSession, item_id: int) -> TeawareItem | None:
+    res = await session.execute(
+        select(TeawareItem).where(TeawareItem.id == item_id)
+    )
+    return res.scalar_one_or_none()
+
+
+async def list_teaware_items(
+    session: AsyncSession, user_id: int
+) -> list[TeawareItem]:
+    res = await session.execute(
+        select(TeawareItem)
+        .where(TeawareItem.user_id == user_id, TeawareItem.status == "active")
+        .order_by(TeawareItem.created_at.desc())
+    )
+    return list(res.scalars().all())
+
+
+async def update_teaware_item(session: AsyncSession, item_id: int, **fields) -> TeawareItem | None:
+    item = await get_teaware_item(session, item_id)
+    if item is None:
+        return None
+    for k, v in fields.items():
+        setattr(item, k, v)
+    await session.commit()
+    await session.refresh(item)
+    return item
+
+
+async def delete_teaware_item(session: AsyncSession, item_id: int) -> bool:
+    item = await get_teaware_item(session, item_id)
+    if item is None:
+        return False
+    item.status = "deleted"
+    await session.commit()
+    return True

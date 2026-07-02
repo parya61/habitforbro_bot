@@ -13,6 +13,7 @@ from sqlalchemy import (
     Boolean,
     Date,
     DateTime,
+    Float,
     ForeignKey,
     Integer,
     String,
@@ -198,6 +199,22 @@ class TeaCollection(Base):
     user: Mapped["User"] = relationship()
 
 
+class TeawareItem(Base):
+    __tablename__ = "teaware_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(256))
+    teaware_type: Mapped[str] = mapped_column(String(32))
+    material: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    volume_ml: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship()
+
+
 class TeaSession(Base):
     __tablename__ = "tea_sessions"
 
@@ -210,6 +227,16 @@ class TeaSession(Base):
     notes: Mapped[str | None] = mapped_column(Text, nullable=True)
     photo_file_ids: Mapped[str | None] = mapped_column(Text, nullable=True)
     cha_qi: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    brew_temp: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    brew_time: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    brew_time_seconds: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    infusions: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    teaware: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    teaware_item_id: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    ratio: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    tea_grams: Mapped[float | None] = mapped_column(Float, nullable=True)
+    water_ml: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    brewing_method: Mapped[str | None] = mapped_column(String(32), nullable=True)
     private: Mapped[bool] = mapped_column(Boolean, default=True)
     session_date: Mapped[date] = mapped_column(Date, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)

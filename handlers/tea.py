@@ -14,18 +14,22 @@ from db.models import User
 from db.queries import (
     add_tea_collection,
     add_tea_session,
+    add_teaware_item,
     avg_tea_rating,
     count_tea_sessions,
     delete_tea_collection_item,
     delete_tea_session,
+    delete_teaware_item,
     get_random_tea,
     get_tea_collection_item,
     get_tea_profile,
     get_tea_session,
+    get_teaware_item,
     get_user_by_tg,
     list_public_tea_sessions,
     list_tea_collection,
     list_tea_sessions,
+    list_teaware_items,
     list_user_public_tea_sessions,
     list_users,
     subtract_tea_grams,
@@ -34,6 +38,7 @@ from db.queries import (
     tea_type_stats,
     update_tea_collection_item,
     update_tea_session,
+    update_teaware_item,
     update_user_settings,
     upsert_tea_profile,
 )
@@ -45,6 +50,8 @@ from states import (
     TeaMessageFlow,
     TeaProfileFlow,
     TeaSessionFlow,
+    TeawareEditFlow,
+    TeawareFlow,
 )
 from utils import display_name, esc, user_today
 
@@ -93,8 +100,68 @@ CHA_QI_OPTIONS = {
     "none": "🤷 не заметил",
 }
 
+TEAWARE_OPTIONS = {
+    "gaiwan": "🫖 гайвань",
+    "yixing": "🏺 исинский чайник",
+    "tipot": "🫖 типот",
+    "mug": "☕ кружка",
+    "flask": "🧪 колба",
+    "other": "🍵 другое",
+}
+
+TEAWARE_MATERIALS = {
+    "porcelain": "фарфор",
+    "clay_yixing": "исинская глина",
+    "clay_jianshui": "цзяньшуйская глина",
+    "glass": "стекло",
+    "cast_iron": "чугун",
+    "steel": "сталь",
+    "ceramic": "керамика",
+    "other": "другой",
+}
+
+BREWING_METHODS = {
+    "gongfu": "🍵 гунфу ча",
+    "western": "☕ европейский",
+    "grandpa": "🫖 бабушкин (листья в чашке)",
+    "cold_brew": "🧊 холодный",
+    "boiling": "♨️ варка",
+}
+
+TEMP_PRESETS = [70, 80, 85, 90, 95, 100]
 
 PAGE_SIZE = 5
+
+
+def _parse_brew_time(text: str) -> int | None:
+    """Parse user input like '30с', '2м', '1м30с', '90' into seconds."""
+    import re
+    text = text.strip().lower().replace(" ", "")
+    m = re.match(r"^(\d+)\s*м(?:ин(?:ут[аы]?)?)?\.?\s*(\d+)?\s*с?(?:ек(?:унд[аы]?)?)?\.?$", text)
+    if m:
+        mins = int(m.group(1))
+        secs = int(m.group(2)) if m.group(2) else 0
+        return mins * 60 + secs
+    m = re.match(r"^(\d+)\s*с(?:ек(?:унд[аы]?)?)?\.?$", text)
+    if m:
+        return int(m.group(1))
+    m = re.match(r"^(\d+)$", text)
+    if m:
+        val = int(m.group(1))
+        return val if val < 600 else None
+    return None
+
+
+def _parse_ratio(text: str) -> tuple[float | None, int | None]:
+    """Parse '5г/100мл', '7/150', '5g 100ml' into (grams, ml)."""
+    import re
+    text = text.strip().lower().replace(" ", "")
+    m = re.match(r"(\d+(?:[.,]\d+)?)\s*[гg]?\s*[/\\:]\s*(\d+)\s*(?:мл|ml)?", text)
+    if m:
+        grams = float(m.group(1).replace(",", "."))
+        ml = int(m.group(2))
+        return grams, ml
+    return None, None
 
 
 def _trim_for_cb(prefix: str, text: str) -> str:
@@ -109,6 +176,7 @@ def _tea_menu_kb(user: User | None = None) -> InlineKeyboardBuilder:
     kb.button(text="🌍 Чайная лента", callback_data="tea:feed:0")
     kb.button(text="📚 Мои записи", callback_data="tea:history")
     kb.button(text="🗄 Моя коллекция", callback_data="tc:list")
+    kb.button(text="🫖 Моя посуда", callback_data="tw:list")
     kb.button(text="🎲 Что заварить?", callback_data="tc:random")
     kb.button(text="📊 Чайная статистика", callback_data="tea:stats")
     kb.button(text="👤 Мой чайный профиль", callback_data="tea:profile")
@@ -167,6 +235,25 @@ def _cha_qi_kb() -> InlineKeyboardBuilder:
     return kb
 
 
+def _temp_kb() -> InlineKeyboardBuilder:
+    kb = InlineKeyboardBuilder()
+    for t in TEMP_PRESETS:
+        kb.button(text=f"{t}°C", callback_data=f"tbr:t:{t}")
+    kb.button(text="✏️ Своя", callback_data="tbr:t:custom")
+    kb.button(text="Пропустить", callback_data="tbr:t:skip")
+    kb.adjust(3, 3, 1, 1)
+    return kb
+
+
+def _teaware_kb() -> InlineKeyboardBuilder:
+    kb = InlineKeyboardBuilder()
+    for code, label in TEAWARE_OPTIONS.items():
+        kb.button(text=label, callback_data=f"tbr:w:{code}")
+    kb.button(text="Пропустить", callback_data="tbr:w:skip")
+    kb.adjust(2, 2, 2, 1)
+    return kb
+
+
 def _type_label(code: str) -> str:
     if code.startswith("custom:"):
         return f"🍵 {code[7:]}"
@@ -188,8 +275,14 @@ async def show_tea_menu(message: Message, user: User | None = None) -> None:
     if user and user.tea_diary_private:
         priv_hint = "\n🔒 Твои записи скрыты от других."
     await message.answer(
-        "🍵 <b>Чайный дневник</b>\n"
-        f"Записывай чаепития, отслеживай вкусы и серии.{priv_hint}",
+        "🍵 <b>Чайный дневник</b>\n\n"
+        "Твой личный дневник чаепитий — записывай что пьёшь, "
+        "как завариваешь, какие вкусы чувствуешь.\n\n"
+        "🍵 <b>Записать</b> — новое чаепитие с параметрами заваривания\n"
+        "🗄 <b>Коллекция</b> — чаи, которые есть дома (с учётом остатков)\n"
+        "🎲 <b>Что заварить?</b> — случайный чай из коллекции\n"
+        "🌍 <b>Лента</b> — что пьют другие участники\n"
+        f"📚 <b>Записи</b> — твоя история (можно редактировать){priv_hint}",
         reply_markup=_tea_menu_kb(user).as_markup(),
     )
 
@@ -455,11 +548,11 @@ async def tea_session_type_custom_text(
         )
         return
     await state.update_data(tea_type=code)
-    await state.set_state(TeaSessionFlow.rating)
+    await state.set_state(TeaSessionFlow.temp)
     await message.answer(
         f"🍵 <b>{esc(data['tea_name'])}</b> — 🍵 {esc(text)}\n\n"
-        "⭐ Оценка (1–10):",
-        reply_markup=_rating_kb().as_markup(),
+        "🌡 Температура воды:",
+        reply_markup=_temp_kb().as_markup(),
     )
 
 
@@ -480,13 +573,315 @@ async def tea_session_type(
         await callback.answer()
         return
     await state.update_data(tea_type=code)
-    await state.set_state(TeaSessionFlow.rating)
+    await state.set_state(TeaSessionFlow.temp)
     await callback.message.edit_text(
         f"🍵 <b>{esc(data['tea_name'])}</b> — {_type_label(code)}\n\n"
+        "🌡 Температура воды:",
+        reply_markup=_temp_kb().as_markup(),
+    )
+    await callback.answer()
+
+
+# ==================== Шаги заваривания ====================
+
+
+@router.callback_query(F.data.startswith("tbr:t:"), TeaSessionFlow.temp)
+async def tea_session_temp(callback: CallbackQuery, state: FSMContext, session: AsyncSession) -> None:
+    val = callback.data[6:]
+    if val == "custom":
+        await state.set_state(TeaSessionFlow.custom_temp)
+        await callback.message.answer("🌡 Введи температуру в °C (число):")
+        await callback.answer()
+        return
+    brew_temp = None if val == "skip" else int(val)
+    data = await state.get_data()
+    if data.get("edit_mode"):
+        ts_id = data["edit_ts_id"]
+        await state.clear()
+        await update_tea_session(session, ts_id, brew_temp=brew_temp)
+        label = f"🌡 {brew_temp}°C" if brew_temp else "без температуры"
+        await callback.message.edit_text(
+            f"✅ Температура изменена: {label}",
+            reply_markup=_edit_menu_kb(ts_id).as_markup(),
+        )
+        await callback.answer()
+        return
+    await state.update_data(brew_temp=brew_temp)
+    await state.set_state(TeaSessionFlow.brew_time)
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Пропустить", callback_data="tbr:time:skip")
+    await callback.message.edit_text(
+        "⏱ Время заваривания (напр. «30с», «2м», «15 секунд»).\n"
+        "Или нажми «Пропустить».",
+        reply_markup=kb.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.message(TeaSessionFlow.custom_temp)
+async def tea_session_custom_temp(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    text = (message.text or "").strip().replace("°", "").replace("C", "").replace("c", "")
+    try:
+        temp = int(text)
+    except ValueError:
+        await message.answer("Введи число (температура в °C):")
+        return
+    data = await state.get_data()
+    if data.get("edit_mode"):
+        ts_id = data["edit_ts_id"]
+        await state.clear()
+        await update_tea_session(session, ts_id, brew_temp=temp)
+        await message.answer(
+            f"✅ Температура изменена: 🌡 {temp}°C",
+            reply_markup=_edit_menu_kb(ts_id).as_markup(),
+        )
+        return
+    await state.update_data(brew_temp=temp)
+    await state.set_state(TeaSessionFlow.brew_time)
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Пропустить", callback_data="tbr:time:skip")
+    await message.answer(
+        "⏱ Время заваривания (напр. «30с», «2м», «15 секунд»).\n"
+        "Или нажми «Пропустить».",
+        reply_markup=kb.as_markup(),
+    )
+
+
+@router.callback_query(F.data == "tbr:time:skip", TeaSessionFlow.brew_time)
+async def tea_session_brew_time_skip(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession
+) -> None:
+    data = await state.get_data()
+    if data.get("edit_mode"):
+        ts_id = data["edit_ts_id"]
+        await state.clear()
+        await update_tea_session(session, ts_id, brew_time=None)
+        await callback.message.edit_text(
+            "✅ Время заваривания очищено.",
+            reply_markup=_edit_menu_kb(ts_id).as_markup(),
+        )
+        await callback.answer()
+        return
+    await state.update_data(brew_time=None)
+    await state.set_state(TeaSessionFlow.infusions)
+    kb = InlineKeyboardBuilder()
+    for n in [1, 3, 5, 7, 10, 15]:
+        kb.button(text=str(n), callback_data=f"tbr:inf:{n}")
+    kb.button(text="Пропустить", callback_data="tbr:inf:skip")
+    kb.adjust(3, 3, 1)
+    await callback.message.edit_text(
+        "🔄 Количество проливов (для гунфу ча).\n"
+        "Если пили обычным способом — пропустите.",
+        reply_markup=kb.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.message(TeaSessionFlow.brew_time)
+async def tea_session_brew_time(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("Введи время или нажми «Пропустить»:")
+        return
+    seconds = _parse_brew_time(text)
+    data = await state.get_data()
+    if data.get("edit_mode"):
+        ts_id = data["edit_ts_id"]
+        await state.clear()
+        await update_tea_session(session, ts_id, brew_time=text, brew_time_seconds=seconds)
+        await message.answer(
+            f"✅ Время заваривания: ⏱ {esc(text)}",
+            reply_markup=_edit_menu_kb(ts_id).as_markup(),
+        )
+        return
+    await state.update_data(brew_time=text, brew_time_seconds=seconds)
+    await state.set_state(TeaSessionFlow.infusions)
+    kb = InlineKeyboardBuilder()
+    for n in [1, 3, 5, 7, 10, 15]:
+        kb.button(text=str(n), callback_data=f"tbr:inf:{n}")
+    kb.button(text="Пропустить", callback_data="tbr:inf:skip")
+    kb.adjust(3, 3, 1)
+    await message.answer(
+        "🔄 Количество проливов (для гунфу ча).\n"
+        "Если пили обычным способом — пропустите.",
+        reply_markup=kb.as_markup(),
+    )
+
+
+@router.callback_query(F.data.startswith("tbr:inf:"), TeaSessionFlow.infusions)
+async def tea_session_infusions(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession, user: User
+) -> None:
+    val = callback.data[8:]
+    infusions = None if val == "skip" else int(val)
+    data = await state.get_data()
+    if data.get("edit_mode"):
+        ts_id = data["edit_ts_id"]
+        await state.clear()
+        await update_tea_session(session, ts_id, infusions=infusions)
+        label = f"🔄 {infusions}" if infusions else "без проливов"
+        await callback.message.edit_text(
+            f"✅ Проливы изменены: {label}",
+            reply_markup=_edit_menu_kb(ts_id).as_markup(),
+        )
+        await callback.answer()
+        return
+    await state.update_data(infusions=infusions)
+    await state.set_state(TeaSessionFlow.teaware)
+    user_items = await list_teaware_items(session, user.id)
+    kb = InlineKeyboardBuilder()
+    for tw_item in user_items:
+        label = tw_item.name[:30]
+        if tw_item.volume_ml:
+            label += f" ({tw_item.volume_ml}мл)"
+        kb.button(text=f"🫖 {label}", callback_data=f"tbr:tw:{tw_item.id}")
+    for code, lbl in TEAWARE_OPTIONS.items():
+        kb.button(text=lbl, callback_data=f"tbr:w:{code}")
+    kb.button(text="Пропустить", callback_data="tbr:w:skip")
+    rows = [1] * len(user_items) + [2, 2, 2, 1] if user_items else [2, 2, 2, 1]
+    kb.adjust(*rows)
+    await callback.message.edit_text(
+        "🫖 Посуда для заваривания:",
+        reply_markup=kb.as_markup(),
+    )
+    await callback.answer()
+
+
+def _after_teaware_kb() -> InlineKeyboardBuilder:
+    kb = InlineKeyboardBuilder()
+    for code, label in BREWING_METHODS.items():
+        kb.button(text=label, callback_data=f"tbr:bm:{code}")
+    kb.button(text="Пропустить", callback_data="tbr:bm:skip")
+    kb.adjust(2, 2, 1, 1)
+    return kb
+
+
+@router.callback_query(F.data.startswith("tbr:tw:"), TeaSessionFlow.teaware)
+async def tea_session_teaware_item(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession
+) -> None:
+    item_id = int(callback.data[7:])
+    item = await get_teaware_item(session, item_id)
+    teaware_type = item.teaware_type if item else "other"
+    await state.update_data(teaware=teaware_type, teaware_item_id=item_id)
+    await state.set_state(TeaSessionFlow.brewing_method)
+    await callback.message.edit_text(
+        "🍵 Метод заваривания:", reply_markup=_after_teaware_kb().as_markup()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("tbr:w:"), TeaSessionFlow.teaware)
+async def tea_session_teaware(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession
+) -> None:
+    val = callback.data[6:]
+    teaware = None if val == "skip" else val
+    data = await state.get_data()
+    if data.get("edit_mode"):
+        ts_id = data["edit_ts_id"]
+        await state.clear()
+        await update_tea_session(session, ts_id, teaware=teaware)
+        label = TEAWARE_OPTIONS.get(teaware, teaware) if teaware else "без посуды"
+        await callback.message.edit_text(
+            f"✅ Посуда изменена: {label}",
+            reply_markup=_edit_menu_kb(ts_id).as_markup(),
+        )
+        await callback.answer()
+        return
+    await state.update_data(teaware=teaware)
+    await state.set_state(TeaSessionFlow.brewing_method)
+    await callback.message.edit_text(
+        "🍵 Метод заваривания:", reply_markup=_after_teaware_kb().as_markup()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("tbr:bm:"), TeaSessionFlow.brewing_method)
+async def tea_session_brewing_method(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession
+) -> None:
+    val = callback.data[7:]
+    method = None if val == "skip" else val
+    data = await state.get_data()
+    if data.get("edit_mode"):
+        ts_id = data["edit_ts_id"]
+        await state.clear()
+        await update_tea_session(session, ts_id, brewing_method=method)
+        label = BREWING_METHODS.get(method, method) if method else "не указан"
+        await callback.message.edit_text(
+            f"✅ Метод заваривания: {label}",
+            reply_markup=_edit_menu_kb(ts_id).as_markup(),
+        )
+        await callback.answer()
+        return
+    await state.update_data(brewing_method=method)
+    await state.set_state(TeaSessionFlow.ratio)
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Пропустить", callback_data="tbr:ratio:skip")
+    await callback.message.edit_text(
+        "⚖️ Пропорция (напр. «5г/100мл», «7/150»).\n"
+        "Или пропустите.",
+        reply_markup=kb.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "tbr:ratio:skip", TeaSessionFlow.ratio)
+async def tea_session_ratio_skip(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession
+) -> None:
+    data = await state.get_data()
+    if data.get("edit_mode"):
+        ts_id = data["edit_ts_id"]
+        await state.clear()
+        await update_tea_session(session, ts_id, ratio=None)
+        await callback.message.edit_text(
+            "✅ Пропорция очищена.",
+            reply_markup=_edit_menu_kb(ts_id).as_markup(),
+        )
+        await callback.answer()
+        return
+    await state.update_data(ratio=None)
+    await state.set_state(TeaSessionFlow.rating)
+    await callback.message.edit_text(
         "⭐ Оценка (1–10):",
         reply_markup=_rating_kb().as_markup(),
     )
     await callback.answer()
+
+
+@router.message(TeaSessionFlow.ratio)
+async def tea_session_ratio(
+    message: Message, state: FSMContext, session: AsyncSession
+) -> None:
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("Введи пропорцию или нажми «Пропустить»:")
+        return
+    tea_grams, water_ml = _parse_ratio(text)
+    data = await state.get_data()
+    if data.get("edit_mode"):
+        ts_id = data["edit_ts_id"]
+        await state.clear()
+        await update_tea_session(
+            session, ts_id, ratio=text, tea_grams=tea_grams, water_ml=water_ml
+        )
+        await message.answer(
+            f"✅ Пропорция: ⚖️ {esc(text)}",
+            reply_markup=_edit_menu_kb(ts_id).as_markup(),
+        )
+        return
+    await state.update_data(ratio=text, tea_grams=tea_grams, water_ml=water_ml)
+    await state.set_state(TeaSessionFlow.rating)
+    await message.answer(
+        "⭐ Оценка (1–10):",
+        reply_markup=_rating_kb().as_markup(),
+    )
 
 
 @router.callback_query(F.data.startswith("tr:"), TeaSessionFlow.rating)
@@ -676,6 +1071,7 @@ async def tea_session_qi(
     photos = data.get("tea_photos", [])
     photo_str = ",".join(photos) if photos else None
 
+    teaware_code = data.get("teaware")
     today = user_today(user)
     ts = await add_tea_session(
         session,
@@ -687,6 +1083,16 @@ async def tea_session_qi(
         notes=data.get("tea_notes"),
         photo_file_ids=photo_str,
         cha_qi=cha_qi,
+        brew_temp=data.get("brew_temp"),
+        brew_time=data.get("brew_time"),
+        brew_time_seconds=data.get("brew_time_seconds"),
+        infusions=data.get("infusions"),
+        teaware=teaware_code,
+        teaware_item_id=data.get("teaware_item_id"),
+        ratio=data.get("ratio"),
+        tea_grams=data.get("tea_grams"),
+        water_ml=data.get("water_ml"),
+        brewing_method=data.get("brewing_method"),
         private=user.tea_diary_private,
         session_date=today,
     )
@@ -694,6 +1100,23 @@ async def tea_session_qi(
 
     lines = ["✅ <b>Чаепитие записано!</b>\n"]
     lines.append(f"🍵 {esc(data['tea_name'])} — {_type_label(data['tea_type'])}")
+    brew_parts = []
+    if data.get("brew_temp"):
+        brew_parts.append(f"{data['brew_temp']}°C")
+    if data.get("brew_time"):
+        brew_parts.append(esc(data["brew_time"]))
+    if data.get("infusions"):
+        brew_parts.append(f"{data['infusions']} пр.")
+    if teaware_code:
+        tw_label = TEAWARE_OPTIONS.get(teaware_code, teaware_code)
+        brew_parts.append(tw_label)
+    if data.get("ratio"):
+        brew_parts.append(esc(data["ratio"]))
+    if data.get("brewing_method"):
+        bm = BREWING_METHODS.get(data["brewing_method"], data["brewing_method"])
+        brew_parts.append(bm)
+    if brew_parts:
+        lines.append(f"🫖 {' · '.join(brew_parts)}")
     if data.get("tea_rating"):
         lines.append(f"⭐ {data['tea_rating']}/10")
     if tags_str:
@@ -725,6 +1148,23 @@ def _session_card_text(s) -> str:
     lines = [f"<b>{s.session_date:%d.%m.%Y}</b> {_type_label(s.tea_type)} <b>{esc(s.tea_name)}</b>"]
     if s.rating:
         lines[0] += f" — ⭐ {s.rating}/10"
+    brew_parts = []
+    if getattr(s, "brew_temp", None):
+        brew_parts.append(f"{s.brew_temp}°C")
+    if getattr(s, "brew_time", None):
+        brew_parts.append(esc(s.brew_time))
+    if getattr(s, "infusions", None):
+        brew_parts.append(f"{s.infusions} пр.")
+    if getattr(s, "teaware", None):
+        tw = TEAWARE_OPTIONS.get(s.teaware, s.teaware)
+        brew_parts.append(tw)
+    if getattr(s, "ratio", None):
+        brew_parts.append(esc(s.ratio))
+    if getattr(s, "brewing_method", None):
+        bm = BREWING_METHODS.get(s.brewing_method, s.brewing_method)
+        brew_parts.append(bm)
+    if brew_parts:
+        lines.append(f"🫖 {' · '.join(brew_parts)}")
     if s.taste_tags:
         lines.append(f"👅 {esc(s.taste_tags)}")
     if s.notes:
@@ -739,24 +1179,56 @@ def _session_card_text(s) -> str:
 
 @router.callback_query(F.data.startswith("tea:history"))
 async def tea_history(
-    callback: CallbackQuery, session: AsyncSession, user: User
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession, user: User
 ) -> None:
     parts = callback.data.split(":")
     page = int(parts[2]) if len(parts) > 2 else 0
+    if page == 0 and len(parts) <= 2:
+        await state.update_data(tea_filter_type=None, tea_filter_rating=None)
+
+    data = await state.get_data()
+    f_type = data.get("tea_filter_type")
+    f_rating = data.get("tea_filter_rating")
+
     offset = page * PAGE_SIZE
-    sessions = await list_tea_sessions(session, user.id, limit=PAGE_SIZE + 1, offset=offset)
+    sessions = await list_tea_sessions(
+        session, user.id, limit=PAGE_SIZE + 1, offset=offset,
+        tea_type=f_type, min_rating=f_rating,
+    )
     has_next = len(sessions) > PAGE_SIZE
     sessions = sessions[:PAGE_SIZE]
 
+    filter_parts = []
+    if f_type:
+        filter_parts.append(_type_label(f_type))
+    if f_rating:
+        filter_parts.append(f"⭐ ≥{f_rating}")
+    filter_text = f" ({', '.join(filter_parts)})" if filter_parts else ""
+
     if not sessions and page == 0:
+        header_kb = InlineKeyboardBuilder()
+        if filter_parts:
+            header_kb.button(text="❌ Сбросить фильтр", callback_data="tea:fc")
+        else:
+            header_kb.button(text="🔍 Фильтр", callback_data="tea:filter")
+        header_kb.button(text="⬅️ Чайный дневник", callback_data="go:tea")
+        header_kb.adjust(1)
         await callback.message.answer(
-            "📚 Записей пока нет. Запиши первое чаепитие!",
-            reply_markup=_tea_menu_kb().as_markup(),
+            f"📚 Записей не найдено{filter_text}.",
+            reply_markup=header_kb.as_markup(),
         )
         await callback.answer()
         return
 
-    await callback.message.answer("📚 <b>Мои чаепития:</b>")
+    header_kb = InlineKeyboardBuilder()
+    header_kb.button(text="🔍 Фильтр", callback_data="tea:filter")
+    if filter_parts:
+        header_kb.button(text="❌ Сбросить", callback_data="tea:fc")
+    header_kb.adjust(2)
+    await callback.message.answer(
+        f"📚 <b>Мои чаепития{filter_text}:</b>",
+        reply_markup=header_kb.as_markup(),
+    )
 
     for i, s in enumerate(sessions):
         is_last = i == len(sessions) - 1
@@ -794,6 +1266,81 @@ async def tea_history(
     await callback.answer()
 
 
+@router.callback_query(F.data == "tea:filter")
+async def tea_filter_menu(callback: CallbackQuery) -> None:
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🏷 По виду чая", callback_data="tea:fmenu:type")
+    kb.button(text="⭐ По оценке", callback_data="tea:fmenu:rat")
+    kb.button(text="⬅️ Назад", callback_data="tea:history")
+    kb.adjust(1)
+    await callback.message.answer(
+        "🔍 <b>Фильтр записей</b>\n\nВыбери критерий:",
+        reply_markup=kb.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "tea:fmenu:type")
+async def tea_filter_type_menu(callback: CallbackQuery) -> None:
+    kb = InlineKeyboardBuilder()
+    for code, name in TEA_TYPES.items():
+        emoji = TEA_TYPE_EMOJI.get(code, "🍵")
+        kb.button(text=f"{emoji} {name}", callback_data=f"tea:ft:{code}")
+    kb.button(text="⬅️ Назад", callback_data="tea:filter")
+    kb.adjust(2, 2, 2, 2, 1, 1)
+    await callback.message.answer(
+        "🏷 Показать записи с видом чая:",
+        reply_markup=kb.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("tea:ft:"))
+async def tea_filter_type_apply(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession, user: User
+) -> None:
+    tea_type = callback.data[7:]
+    await state.update_data(tea_filter_type=tea_type)
+    await callback.answer(f"Фильтр: {_type_label(tea_type)}")
+    callback.data = "tea:history:0"
+    await tea_history(callback, state, session, user)
+
+
+@router.callback_query(F.data == "tea:fmenu:rat")
+async def tea_filter_rating_menu(callback: CallbackQuery) -> None:
+    kb = InlineKeyboardBuilder()
+    for r in [6, 7, 8, 9]:
+        kb.button(text=f"≥ {r}", callback_data=f"tea:fr:{r}")
+    kb.button(text="⬅️ Назад", callback_data="tea:filter")
+    kb.adjust(4, 1)
+    await callback.message.answer(
+        "⭐ Показать записи с оценкой не ниже:",
+        reply_markup=kb.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("tea:fr:"))
+async def tea_filter_rating_apply(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession, user: User
+) -> None:
+    min_rating = int(callback.data[7:])
+    await state.update_data(tea_filter_rating=min_rating)
+    await callback.answer(f"Фильтр: ⭐ ≥{min_rating}")
+    callback.data = "tea:history:0"
+    await tea_history(callback, state, session, user)
+
+
+@router.callback_query(F.data == "tea:fc")
+async def tea_filter_clear(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession, user: User
+) -> None:
+    await state.update_data(tea_filter_type=None, tea_filter_rating=None)
+    await callback.answer("Фильтры сброшены")
+    callback.data = "tea:history:0"
+    await tea_history(callback, state, session, user)
+
+
 # ==================== Редактирование и удаление ====================
 
 
@@ -801,13 +1348,19 @@ def _edit_menu_kb(ts_id: int) -> InlineKeyboardBuilder:
     kb = InlineKeyboardBuilder()
     kb.button(text="🍵 Название", callback_data=f"te:f:name:{ts_id}")
     kb.button(text="🏷 Вид чая", callback_data=f"te:f:type:{ts_id}")
+    kb.button(text="🌡 Темп.", callback_data=f"te:f:temp:{ts_id}")
+    kb.button(text="⏱ Время", callback_data=f"te:f:time:{ts_id}")
+    kb.button(text="🔄 Проливы", callback_data=f"te:f:inf:{ts_id}")
+    kb.button(text="🫖 Посуда", callback_data=f"te:f:ware:{ts_id}")
+    kb.button(text="🍵 Метод", callback_data=f"te:f:bm:{ts_id}")
+    kb.button(text="⚖️ Пропорция", callback_data=f"te:f:rat:{ts_id}")
     kb.button(text="⭐ Оценка", callback_data=f"te:f:rating:{ts_id}")
     kb.button(text="👅 Теги", callback_data=f"te:f:tags:{ts_id}")
     kb.button(text="📝 Заметки", callback_data=f"te:f:notes:{ts_id}")
-    kb.button(text="📸 Добавить фото", callback_data=f"te:f:photo:{ts_id}")
+    kb.button(text="📸 Фото", callback_data=f"te:f:photo:{ts_id}")
     kb.button(text="✨ Ча ци", callback_data=f"te:f:qi:{ts_id}")
     kb.button(text="⬅️ Назад", callback_data="tea:history")
-    kb.adjust(2, 2, 2, 1, 1)
+    kb.adjust(2, 2, 2, 2, 2, 2, 2, 1)
     return kb
 
 
@@ -867,6 +1420,89 @@ async def tea_edit_type_start(callback: CallbackQuery, state: FSMContext) -> Non
     await callback.message.answer(
         "🏷 Выбери новый вид чая:",
         reply_markup=_tea_type_kb().as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("te:f:temp:"))
+async def tea_edit_temp_start(callback: CallbackQuery, state: FSMContext) -> None:
+    ts_id = int(callback.data.split(":")[3])
+    await state.set_state(TeaSessionFlow.temp)
+    await state.update_data(edit_ts_id=ts_id, edit_mode=True)
+    await callback.message.answer(
+        "🌡 Новая температура воды:",
+        reply_markup=_temp_kb().as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("te:f:time:"))
+async def tea_edit_time_start(callback: CallbackQuery, state: FSMContext) -> None:
+    ts_id = int(callback.data.split(":")[3])
+    await state.set_state(TeaSessionFlow.brew_time)
+    await state.update_data(edit_ts_id=ts_id, edit_mode=True)
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Пропустить", callback_data="tbr:time:skip")
+    await callback.message.answer(
+        "⏱ Новое время заваривания (напр. «30с», «2м»).\n"
+        "Или «Пропустить» чтобы очистить.",
+        reply_markup=kb.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("te:f:inf:"))
+async def tea_edit_inf_start(callback: CallbackQuery, state: FSMContext) -> None:
+    ts_id = int(callback.data.split(":")[3])
+    await state.set_state(TeaSessionFlow.infusions)
+    await state.update_data(edit_ts_id=ts_id, edit_mode=True)
+    kb = InlineKeyboardBuilder()
+    for n in [1, 3, 5, 7, 10, 15]:
+        kb.button(text=str(n), callback_data=f"tbr:inf:{n}")
+    kb.button(text="Пропустить", callback_data="tbr:inf:skip")
+    kb.adjust(3, 3, 1)
+    await callback.message.answer(
+        "🔄 Новое количество проливов:",
+        reply_markup=kb.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("te:f:ware:"))
+async def tea_edit_ware_start(callback: CallbackQuery, state: FSMContext) -> None:
+    ts_id = int(callback.data.split(":")[3])
+    await state.set_state(TeaSessionFlow.teaware)
+    await state.update_data(edit_ts_id=ts_id, edit_mode=True)
+    await callback.message.answer(
+        "🫖 Новая посуда для заваривания:",
+        reply_markup=_teaware_kb().as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("te:f:bm:"))
+async def tea_edit_bm_start(callback: CallbackQuery, state: FSMContext) -> None:
+    ts_id = int(callback.data.split(":")[3])
+    await state.set_state(TeaSessionFlow.brewing_method)
+    await state.update_data(edit_ts_id=ts_id, edit_mode=True)
+    await callback.message.answer(
+        "🍵 Метод заваривания:",
+        reply_markup=_after_teaware_kb().as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("te:f:rat:"))
+async def tea_edit_ratio_start(callback: CallbackQuery, state: FSMContext) -> None:
+    ts_id = int(callback.data.split(":")[3])
+    await state.set_state(TeaSessionFlow.ratio)
+    await state.update_data(edit_ts_id=ts_id, edit_mode=True)
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Пропустить", callback_data="tbr:ratio:skip")
+    await callback.message.answer(
+        "⚖️ Новая пропорция (напр. «5г/100мл», «7/150»).\n"
+        "Или «Пропустить» чтобы очистить.",
+        reply_markup=kb.as_markup(),
     )
     await callback.answer()
 
@@ -1104,6 +1740,23 @@ def _feed_card_text(s, author_name: str) -> str:
     ]
     if s.rating:
         lines[-1] += f" — ⭐ {s.rating}/10"
+    brew_parts = []
+    if getattr(s, "brew_temp", None):
+        brew_parts.append(f"{s.brew_temp}°C")
+    if getattr(s, "brew_time", None):
+        brew_parts.append(esc(s.brew_time))
+    if getattr(s, "infusions", None):
+        brew_parts.append(f"{s.infusions} пр.")
+    if getattr(s, "teaware", None):
+        tw = TEAWARE_OPTIONS.get(s.teaware, s.teaware)
+        brew_parts.append(tw)
+    if getattr(s, "ratio", None):
+        brew_parts.append(esc(s.ratio))
+    if getattr(s, "brewing_method", None):
+        bm = BREWING_METHODS.get(s.brewing_method, s.brewing_method)
+        brew_parts.append(bm)
+    if brew_parts:
+        lines.append(f"🫖 {' · '.join(brew_parts)}")
     if s.taste_tags:
         lines.append(f"👅 {esc(s.taste_tags)}")
     if s.notes:
@@ -1158,7 +1811,9 @@ async def tea_feed(callback: CallbackQuery, session: AsyncSession, user: User) -
 
         card_kb = InlineKeyboardBuilder()
         if s.user_id != user.id:
-            card_kb.button(text=f"💬 Написать", callback_data=f"tea:msg:{s.id}")
+            card_kb.button(text="💬 Написать", callback_data=f"tea:msg:{s.id}")
+            if s.user:
+                card_kb.button(text="👤 Профиль", callback_data=f"tea:user:{s.user.telegram_id}")
         markup = card_kb.as_markup() if card_kb.export() else None
 
         if is_last:
@@ -1502,7 +2157,7 @@ async def tea_coll_brew(callback: CallbackQuery, state: FSMContext, session: Asy
         await callback.answer("Чай не найден", show_alert=True)
         return
 
-    await state.set_state(TeaSessionFlow.rating)
+    await state.set_state(TeaSessionFlow.temp)
     await state.update_data(
         tea_name=item.tea_name,
         tea_type=item.tea_type,
@@ -1510,8 +2165,8 @@ async def tea_coll_brew(callback: CallbackQuery, state: FSMContext, session: Asy
     )
     await callback.message.answer(
         f"🍵 Завариваем <b>{esc(item.tea_name)}</b> — {_type_label(item.tea_type)}\n\n"
-        "⭐ Оценка (1–10):",
-        reply_markup=_rating_kb().as_markup(),
+        "🌡 Температура воды:",
+        reply_markup=_temp_kb().as_markup(),
     )
     await callback.answer()
 
@@ -1746,3 +2401,321 @@ def _calc_tea_streak(dates: list[date], today: date) -> tuple[int, int]:
             best = current
         prev = d
     return streak, best
+
+
+# ==================== Коллекция посуды ====================
+
+
+def _tw_item_text(item) -> str:
+    emoji = {"gaiwan": "🫖", "yixing": "🏺", "tipot": "🫖", "mug": "☕",
+             "flask": "🧪", "other": "🍵"}.get(item.teaware_type, "🍵")
+    tw_name = TEAWARE_OPTIONS.get(item.teaware_type, item.teaware_type)
+    lines = [f"{emoji} <b>{esc(item.name)}</b> — {tw_name}"]
+    if item.material:
+        mat = TEAWARE_MATERIALS.get(item.material, item.material)
+        lines[0] += f", {mat}"
+    if item.volume_ml:
+        lines[0] += f", {item.volume_ml} мл"
+    if item.notes:
+        lines.append(f"📝 <i>{esc(item.notes[:200])}</i>")
+    return "\n".join(lines)
+
+
+@router.callback_query(F.data == "tw:list")
+async def tw_list(callback: CallbackQuery, session: AsyncSession, user: User) -> None:
+    items = await list_teaware_items(session, user.id)
+    kb = InlineKeyboardBuilder()
+    if not items:
+        kb.button(text="➕ Добавить посуду", callback_data="tw:add")
+        kb.button(text="⬅️ Чайный дневник", callback_data="go:tea")
+        kb.adjust(1)
+        await callback.message.answer(
+            "🫖 <b>Моя посуда</b>\n\nКоллекция пуста. Добавь свою первую посуду!",
+            reply_markup=kb.as_markup(),
+        )
+        await callback.answer()
+        return
+    text = "🫖 <b>Моя посуда:</b>\n"
+    for item in items:
+        text += f"\n{_tw_item_text(item)}"
+        kb.button(text=f"✏️ {item.name[:20]}", callback_data=f"tw:edit:{item.id}")
+    kb.button(text="➕ Добавить", callback_data="tw:add")
+    kb.button(text="⬅️ Чайный дневник", callback_data="go:tea")
+    kb.adjust(1)
+    await callback.message.answer(text, reply_markup=kb.as_markup())
+    await callback.answer()
+
+
+@router.callback_query(F.data == "tw:add")
+async def tw_add_start(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.set_state(TeawareFlow.name)
+    await callback.message.answer(
+        "🫖 <b>Новая посуда</b>\n\n"
+        "Введи название (напр. «Гайвань 100мл белый фарфор», "
+        "«Исинский чайник Си Ши 180мл»):"
+    )
+    await callback.answer()
+
+
+@router.message(TeawareFlow.name)
+async def tw_add_name(message: Message, state: FSMContext) -> None:
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("Введи название посуды:")
+        return
+    await state.update_data(tw_name=text)
+    await state.set_state(TeawareFlow.teaware_type)
+    kb = InlineKeyboardBuilder()
+    for code, label in TEAWARE_OPTIONS.items():
+        kb.button(text=label, callback_data=f"tw:type:{code}")
+    kb.adjust(2, 2, 2)
+    await message.answer("Тип посуды:", reply_markup=kb.as_markup())
+
+
+@router.callback_query(F.data.startswith("tw:type:"), TeawareFlow.teaware_type)
+async def tw_add_type(callback: CallbackQuery, state: FSMContext) -> None:
+    code = callback.data[8:]
+    await state.update_data(tw_type=code)
+    await state.set_state(TeawareFlow.material)
+    kb = InlineKeyboardBuilder()
+    for mat_code, mat_label in TEAWARE_MATERIALS.items():
+        kb.button(text=mat_label, callback_data=f"tw:mat:{mat_code}")
+    kb.button(text="Пропустить", callback_data="tw:mat:skip")
+    kb.adjust(2, 2, 2, 2, 1)
+    await callback.message.edit_text("Материал:", reply_markup=kb.as_markup())
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("tw:mat:"), TeawareFlow.material)
+async def tw_add_material(callback: CallbackQuery, state: FSMContext) -> None:
+    val = callback.data[7:]
+    material = None if val == "skip" else val
+    await state.update_data(tw_material=material)
+    await state.set_state(TeawareFlow.volume)
+    kb = InlineKeyboardBuilder()
+    for v in [80, 100, 120, 150, 180, 200, 250, 300]:
+        kb.button(text=f"{v} мл", callback_data=f"tw:vol:{v}")
+    kb.button(text="Пропустить", callback_data="tw:vol:skip")
+    kb.adjust(4, 4, 1)
+    await callback.message.edit_text(
+        "Объём (мл):", reply_markup=kb.as_markup()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("tw:vol:"), TeawareFlow.volume)
+async def tw_add_volume(callback: CallbackQuery, state: FSMContext) -> None:
+    val = callback.data[7:]
+    volume = None if val == "skip" else int(val)
+    await state.update_data(tw_volume=volume)
+    await state.set_state(TeawareFlow.notes)
+    kb = InlineKeyboardBuilder()
+    kb.button(text="Пропустить", callback_data="tw:notes:skip")
+    await callback.message.edit_text(
+        "📝 Заметки (производитель, особенности, год покупки).\n"
+        "Или «Пропустить».",
+        reply_markup=kb.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data == "tw:notes:skip", TeawareFlow.notes)
+async def tw_add_notes_skip(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession, user: User
+) -> None:
+    data = await state.get_data()
+    await state.clear()
+    item = await add_teaware_item(
+        session,
+        user_id=user.id,
+        name=data["tw_name"],
+        teaware_type=data["tw_type"],
+        material=data.get("tw_material"),
+        volume_ml=data.get("tw_volume"),
+    )
+    done_kb = InlineKeyboardBuilder()
+    done_kb.button(text="🫖 Моя посуда", callback_data="tw:list")
+    done_kb.button(text="⬅️ Чайный дневник", callback_data="go:tea")
+    done_kb.adjust(1)
+    await callback.message.edit_text(
+        f"✅ Посуда добавлена!\n\n{_tw_item_text(item)}",
+        reply_markup=done_kb.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.message(TeawareFlow.notes)
+async def tw_add_notes(
+    message: Message, state: FSMContext, session: AsyncSession, user: User
+) -> None:
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("Введи заметки или нажми «Пропустить»:")
+        return
+    data = await state.get_data()
+    await state.clear()
+    item = await add_teaware_item(
+        session,
+        user_id=user.id,
+        name=data["tw_name"],
+        teaware_type=data["tw_type"],
+        material=data.get("tw_material"),
+        volume_ml=data.get("tw_volume"),
+        notes=text,
+    )
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🫖 Моя посуда", callback_data="tw:list")
+    kb.button(text="⬅️ Чайный дневник", callback_data="go:tea")
+    kb.adjust(1)
+    await message.answer(
+        f"✅ Посуда добавлена!\n\n{_tw_item_text(item)}",
+        reply_markup=kb.as_markup(),
+    )
+
+
+@router.callback_query(F.data.startswith("tw:edit:"))
+async def tw_edit_menu(
+    callback: CallbackQuery, session: AsyncSession, user: User
+) -> None:
+    item_id = int(callback.data.split(":")[2])
+    item = await get_teaware_item(session, item_id)
+    if not item or item.user_id != user.id:
+        await callback.answer("Посуда не найдена", show_alert=True)
+        return
+    kb = InlineKeyboardBuilder()
+    kb.button(text="✏️ Название", callback_data=f"tw:ef:name:{item_id}")
+    kb.button(text="📐 Объём", callback_data=f"tw:ef:vol:{item_id}")
+    kb.button(text="📝 Заметки", callback_data=f"tw:ef:notes:{item_id}")
+    kb.button(text="🗑 Удалить", callback_data=f"tw:del:{item_id}")
+    kb.button(text="⬅️ Назад", callback_data="tw:list")
+    kb.adjust(2, 2, 1)
+    await callback.message.answer(
+        f"✏️ <b>Редактирование</b>\n\n{_tw_item_text(item)}",
+        reply_markup=kb.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("tw:ef:name:"))
+async def tw_edit_name_start(callback: CallbackQuery, state: FSMContext) -> None:
+    item_id = int(callback.data.split(":")[3])
+    await state.set_state(TeawareEditFlow.name)
+    await state.update_data(tw_edit_id=item_id)
+    await callback.message.answer("Введи новое название:")
+    await callback.answer()
+
+
+@router.message(TeawareEditFlow.name)
+async def tw_edit_name_save(
+    message: Message, state: FSMContext, session: AsyncSession, user: User
+) -> None:
+    text = (message.text or "").strip()
+    if not text:
+        await message.answer("Введи название:")
+        return
+    data = await state.get_data()
+    item_id = data["tw_edit_id"]
+    await state.clear()
+    item = await update_teaware_item(session, item_id, name=text)
+    if item and item.user_id == user.id:
+        kb = InlineKeyboardBuilder()
+        kb.button(text="⬅️ Назад", callback_data=f"tw:edit:{item_id}")
+        await message.answer(
+            f"✅ Название изменено: {esc(text)}", reply_markup=kb.as_markup()
+        )
+    else:
+        await message.answer("Посуда не найдена.")
+
+
+@router.callback_query(F.data.startswith("tw:ef:vol:"))
+async def tw_edit_vol_start(callback: CallbackQuery, state: FSMContext) -> None:
+    item_id = int(callback.data.split(":")[3])
+    await state.set_state(TeawareEditFlow.volume)
+    await state.update_data(tw_edit_id=item_id)
+    kb = InlineKeyboardBuilder()
+    for v in [80, 100, 120, 150, 180, 200, 250, 300]:
+        kb.button(text=f"{v} мл", callback_data=f"tw:evol:{v}")
+    kb.adjust(4, 4)
+    await callback.message.answer("Новый объём:", reply_markup=kb.as_markup())
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("tw:evol:"), TeawareEditFlow.volume)
+async def tw_edit_vol_save(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession, user: User
+) -> None:
+    vol = int(callback.data[8:])
+    data = await state.get_data()
+    item_id = data["tw_edit_id"]
+    await state.clear()
+    item = await update_teaware_item(session, item_id, volume_ml=vol)
+    if item and item.user_id == user.id:
+        kb = InlineKeyboardBuilder()
+        kb.button(text="⬅️ Назад", callback_data=f"tw:edit:{item_id}")
+        await callback.message.edit_text(
+            f"✅ Объём: {vol} мл", reply_markup=kb.as_markup()
+        )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("tw:ef:notes:"))
+async def tw_edit_notes_start(callback: CallbackQuery, state: FSMContext) -> None:
+    item_id = int(callback.data.split(":")[3])
+    await state.set_state(TeawareEditFlow.notes)
+    await state.update_data(tw_edit_id=item_id)
+    await callback.message.answer("Введи новые заметки (или «пропустить» для очистки):")
+    await callback.answer()
+
+
+@router.message(TeawareEditFlow.notes)
+async def tw_edit_notes_save(
+    message: Message, state: FSMContext, session: AsyncSession, user: User
+) -> None:
+    text = (message.text or "").strip()
+    notes = None if text.lower() in ("пропустить", "skip", "-") else text
+    data = await state.get_data()
+    item_id = data["tw_edit_id"]
+    await state.clear()
+    item = await update_teaware_item(session, item_id, notes=notes)
+    if item and item.user_id == user.id:
+        label = "обновлены" if notes else "очищены"
+        kb = InlineKeyboardBuilder()
+        kb.button(text="⬅️ Назад", callback_data=f"tw:edit:{item_id}")
+        await message.answer(f"✅ Заметки {label}.", reply_markup=kb.as_markup())
+    else:
+        await message.answer("Посуда не найдена.")
+
+
+@router.callback_query(F.data.startswith("tw:del:"))
+async def tw_delete_confirm(
+    callback: CallbackQuery, session: AsyncSession, user: User
+) -> None:
+    item_id = int(callback.data.split(":")[2])
+    item = await get_teaware_item(session, item_id)
+    if not item or item.user_id != user.id:
+        await callback.answer("Посуда не найдена", show_alert=True)
+        return
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🗑 Да, удалить", callback_data=f"tw:delok:{item_id}")
+    kb.button(text="❌ Отмена", callback_data=f"tw:edit:{item_id}")
+    kb.adjust(2)
+    await callback.message.answer(
+        f"Удалить <b>{esc(item.name)}</b>?", reply_markup=kb.as_markup()
+    )
+    await callback.answer()
+
+
+@router.callback_query(F.data.startswith("tw:delok:"))
+async def tw_delete_ok(
+    callback: CallbackQuery, session: AsyncSession, user: User
+) -> None:
+    item_id = int(callback.data.split(":")[2])
+    item = await get_teaware_item(session, item_id)
+    if not item or item.user_id != user.id:
+        await callback.answer("Посуда не найдена", show_alert=True)
+        return
+    await delete_teaware_item(session, item_id)
+    kb = InlineKeyboardBuilder()
+    kb.button(text="🫖 Моя посуда", callback_data="tw:list")
+    await callback.message.edit_text("✅ Посуда удалена.", reply_markup=kb.as_markup())
+    await callback.answer()

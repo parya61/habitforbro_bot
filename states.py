@@ -60,6 +60,13 @@ class TeaSessionFlow(StatesGroup):
     name = State()         # название чая
     tea_type = State()     # вид чая
     custom_type = State()  # ввод своего вида чая
+    temp = State()         # температура воды
+    custom_temp = State()  # ввод своей температуры
+    brew_time = State()    # время заваривания
+    infusions = State()    # количество проливов
+    teaware = State()      # посуда
+    brewing_method = State()  # метод заваривания
+    ratio = State()        # пропорция г/мл
     rating = State()       # оценка 1-10
     tags = State()         # вкусовые теги (мультивыбор)
     custom_tag = State()   # ввод своего вкусового тега
@@ -92,6 +99,20 @@ class TeaCollEditFlow(StatesGroup):
     vendor = State()       # новый продавец
     notes = State()        # новые заметки
     subtract = State()     # списать граммы
+
+
+class TeawareFlow(StatesGroup):
+    name = State()         # название посуды
+    teaware_type = State() # тип (гайвань, исинский и т.д.)
+    material = State()     # материал
+    volume = State()       # объём в мл
+    notes = State()        # заметки
+
+
+class TeawareEditFlow(StatesGroup):
+    name = State()         # новое название
+    volume = State()       # новый объём
+    notes = State()        # новые заметки
 
 
 class TeaMessageFlow(StatesGroup):
