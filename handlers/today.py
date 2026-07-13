@@ -37,26 +37,9 @@ async def show_today(message: Message, session: AsyncSession, user: User) -> Non
     kb = InlineKeyboardBuilder()
     text_parts = []
 
-    # Секция «Вчера» — неотмеченные привычки за вчера
-    yesterday = today - timedelta(days=1)
-    y_unmarked = []
-    for h in all_habits:
-        if is_scheduled(h, yesterday):
-            log = await get_log(session, h.id, yesterday)
-            if not log or not log.done:
-                y_unmarked.append(h)
-    if y_unmarked:
-        text_parts.append("📅 <b>Вчера</b> (не отмечено):")
-        for h in y_unmarked:
-            kb.button(
-                text=f"📅 {h.emoji} {h.title}",
-                callback_data=f"tgy:{h.id}",
-            )
-
-    # Секция «Сегодня»
     today_habits = [h for h in all_habits if is_scheduled(h, today)]
     if today_habits:
-        text_parts.append("\n📋 <b>Сегодня</b>")
+        text_parts.append("📋 <b>Сегодня</b>")
         for h in today_habits:
             log = await get_log(session, h.id, today)
             done = log is not None and log.done
@@ -104,39 +87,6 @@ async def show_today(message: Message, session: AsyncSession, user: User) -> Non
 @router.message(F.text == "📋 Сегодня")
 async def cmd_today(message: Message, session: AsyncSession, user: User) -> None:
     await show_today(message, session, user)
-
-
-@router.callback_query(F.data.startswith("tgy:"))
-async def toggle_yesterday(
-    callback: CallbackQuery, session: AsyncSession, user: User, state: FSMContext
-) -> None:
-    habit_id = int(callback.data.split(":")[1])
-    habit = await get_habit(session, habit_id)
-    if not habit:
-        await callback.answer("Не найдено", show_alert=True)
-        return
-    yesterday = user_today(user) - timedelta(days=1)
-    log = await get_log(session, habit_id, yesterday)
-    already_done = log is not None and log.done
-
-    if habit.type == "quantitative" and not already_done:
-        await state.set_state(LogQuantity.amount)
-        await state.update_data(habit_id=habit_id, log_date=yesterday.isoformat())
-        kb = InlineKeyboardBuilder()
-        kb.button(text=f"🎯 Цель ({habit.target})", callback_data=f"amt:{habit.target}")
-        kb.button(text="➕ Больше", callback_data="amt:more")
-        kb.button(text="➖ Меньше", callback_data="amt:less")
-        kb.adjust(1)
-        await callback.message.answer(
-            f"📅 Вчера: сколько {esc(habit.unit) or 'раз'}?",
-            reply_markup=kb.as_markup(),
-        )
-        await callback.answer()
-        return
-
-    new_done = not already_done
-    await upsert_log(session, habit_id, yesterday, done=new_done)
-    await _refresh_and_reply(callback, session, user, habit, user_today(user), new_done)
 
 
 @router.callback_query(F.data.startswith("tg:"))

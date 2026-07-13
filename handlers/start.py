@@ -55,7 +55,7 @@ HELP_TEXT = (
     "Заморозки расходуются автоматически. Если пропусков больше 2 — серия обнуляется.\n\n"
     "<b>⏰ Отметки:</b>\n"
     "Привычки за сегодня — до конца дня. "
-    "Забыл отметить вчера? Можно отметить в любое время.\n\n"
+    "Забыл отметить вчера? Раздел «📅 Вчера» доступен до 12:00.\n\n"
     "<b>🔐 Приватность:</b>\n"
     "Дневник по умолчанию приватный. Привычки можно сделать публичными "
     "(видят все участники) или скрытыми ото всех."
@@ -75,6 +75,7 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext) 
 # Соответствие кнопок нижней клавиатуры разделам.
 MENU_TEXTS = {
     "📋 Сегодня": "today",
+    "📅 Вчера": "yesterday",
     "➕ Привычки": "habits",
     "🎯 Цели": "goals",
     "📔 Дневник": "diary",
@@ -96,6 +97,9 @@ async def _dispatch(dest: str, msg: Message, session: AsyncSession, user: User) 
     elif dest == "today":
         from handlers.today import show_today
         await show_today(msg, session, user)
+    elif dest == "yesterday":
+        from handlers.yesterday import show_yesterday
+        await show_yesterday(msg, session, user)
     elif dest == "habits":
         from handlers.habits import show_habits_list
         await show_habits_list(msg, session, user)

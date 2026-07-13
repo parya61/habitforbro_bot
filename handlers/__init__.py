@@ -14,6 +14,7 @@ from handlers import (
     start,
     stats,
     today,
+    yesterday,
 )
 
 
@@ -24,6 +25,7 @@ def get_routers() -> list[Router]:
         admin.router,
         habits.router,
         today.router,
+        yesterday.router,
         diary.router,
         goals.router,
         stats.router,

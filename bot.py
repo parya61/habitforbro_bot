@@ -21,6 +21,7 @@ from services.scheduler import setup_scheduler
 BOT_COMMANDS = [
     BotCommand(command="start", description="🏠 Главное меню"),
     BotCommand(command="today", description="📋 Привычки на сегодня"),
+    BotCommand(command="yesterday", description="📅 Отметить за вчера (до 12:00)"),
     BotCommand(command="habits", description="➕ Мои привычки"),
     BotCommand(command="goals", description="🎯 Цели"),
     BotCommand(command="diary", description="📔 Дневник"),

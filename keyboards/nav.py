@@ -12,6 +12,7 @@ def main_inline_kb() -> InlineKeyboardMarkup:
     """Главное меню в виде inline-кнопок (дублирует нижнюю клавиатуру)."""
     kb = InlineKeyboardBuilder()
     kb.button(text="📋 Сегодня", callback_data="go:today")
+    kb.button(text="📅 Вчера", callback_data="go:yesterday")
     kb.button(text="➕ Привычки", callback_data="go:habits")
     kb.button(text="📔 Дневник", callback_data="go:diary")
     kb.button(text="📊 Статистика", callback_data="go:stats")
@@ -21,7 +22,7 @@ def main_inline_kb() -> InlineKeyboardMarkup:
     kb.button(text="🎁 Призы", callback_data="go:prizes")
     kb.button(text="⚙️ Настройки", callback_data="go:settings")
     kb.button(text="ℹ️ Помощь", callback_data="go:help")
-    kb.adjust(2, 2, 2, 2, 1, 1)
+    kb.adjust(2, 2, 2, 2, 2, 1)
     return kb.as_markup()
 
 
