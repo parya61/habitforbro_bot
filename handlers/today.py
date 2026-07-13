@@ -16,7 +16,7 @@ from db.queries import get_habit, get_log, list_habits, upsert_log
 from services.achievements import check_after_log
 from services.streaks import current_streak, habit_freeze_usage, is_scheduled
 from states import LogQuantity
-from utils import esc, user_now, user_today
+from utils import esc, user_today
 
 router = Router()
 
@@ -32,28 +32,26 @@ MOTIVATION = [
 
 async def show_today(message: Message, session: AsyncSession, user: User) -> None:
     today = user_today(user)
-    now = user_now(user)
 
     all_habits = await list_habits(session, user.id)
     kb = InlineKeyboardBuilder()
     text_parts = []
 
-    # Секция «Вчера» — если до 10:00 и есть неотмеченные
-    if now.hour < 10:
-        yesterday = today - timedelta(days=1)
-        y_unmarked = []
-        for h in all_habits:
-            if is_scheduled(h, yesterday):
-                log = await get_log(session, h.id, yesterday)
-                if not log or not log.done:
-                    y_unmarked.append(h)
-        if y_unmarked:
-            text_parts.append("📅 <b>Вчера</b> (можно отметить до 10:00):")
-            for h in y_unmarked:
-                kb.button(
-                    text=f"📅 {h.emoji} {h.title}",
-                    callback_data=f"tgy:{h.id}",
-                )
+    # Секция «Вчера» — неотмеченные привычки за вчера
+    yesterday = today - timedelta(days=1)
+    y_unmarked = []
+    for h in all_habits:
+        if is_scheduled(h, yesterday):
+            log = await get_log(session, h.id, yesterday)
+            if not log or not log.done:
+                y_unmarked.append(h)
+    if y_unmarked:
+        text_parts.append("📅 <b>Вчера</b> (не отмечено):")
+        for h in y_unmarked:
+            kb.button(
+                text=f"📅 {h.emoji} {h.title}",
+                callback_data=f"tgy:{h.id}",
+            )
 
     # Секция «Сегодня»
     today_habits = [h for h in all_habits if is_scheduled(h, today)]
@@ -112,13 +110,6 @@ async def cmd_today(message: Message, session: AsyncSession, user: User) -> None
 async def toggle_yesterday(
     callback: CallbackQuery, session: AsyncSession, user: User, state: FSMContext
 ) -> None:
-    now = user_now(user)
-    if now.hour >= 10:
-        await callback.answer(
-            "Время вышло — вчерашние можно отметить только до 10:00",
-            show_alert=True,
-        )
-        return
     habit_id = int(callback.data.split(":")[1])
     habit = await get_habit(session, habit_id)
     if not habit:

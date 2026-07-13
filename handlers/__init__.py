@@ -12,7 +12,6 @@ from handlers import (
     settings,
     start,
     stats,
-    tea,
     today,
 )
 
@@ -28,7 +27,6 @@ def get_routers() -> list[Router]:
         stats.router,
         leaderboard.router,
         members.router,
-        tea.router,
         prizes.router,
         settings.router,
         fallback.router,

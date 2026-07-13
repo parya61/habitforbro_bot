@@ -42,7 +42,6 @@ HELP_TEXT = (
     "/today — привычки на сегодня и отметки\n"
     "/habits — мои привычки (создать, изменить, архив)\n"
     "/diary — личный дневник\n"
-    "/tea — чайный дневник\n"
     "/stats — статистика и серии\n"
     "/leaderboard — рейтинг участников\n"
     "/start — главное меню\n\n"
@@ -121,7 +120,6 @@ MENU_TEXTS = {
     "📊 Статистика": "stats",
     "🏆 Рейтинг": "leaderboard",
     "👥 Участники": "members",
-    "🍵 Чай": "tea",
     "🎁 Призы": "prizes",
     "⚙️ Настройки": "settings",
     "ℹ️ Помощь": "help",
@@ -152,9 +150,6 @@ async def _dispatch(dest: str, msg: Message, session: AsyncSession, user: User) 
     elif dest == "members":
         from handlers.members import show_members
         await show_members(msg, session)
-    elif dest == "tea":
-        from handlers.tea import show_tea_menu
-        await show_tea_menu(msg, user)
     elif dest == "prizes":
         from handlers.prizes import show_prizes
         await show_prizes(msg, session, user)

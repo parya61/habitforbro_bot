@@ -1,7 +1,6 @@
 """Дневник: запись за день, подсказки, настроение, приватность, просмотр истории."""
 from __future__ import annotations
 
-import random
 from datetime import date
 
 from aiogram import F, Router
@@ -19,22 +18,12 @@ from utils import esc
 
 router = Router()
 
-PROMPTS = [
-    "Что сегодня порадовало?",
-    "За что ты благодарен?",
-    "Что хочешь улучшить завтра?",
-    "Какой момент дня запомнился больше всего?",
-    "Что нового ты узнал сегодня?",
-    "Чем ты гордишься сегодня?",
-]
-
 MOODS = ["😀", "🙂", "😐", "😔", "😢", "😤", "😴"]
 
 
 def _diary_menu_kb() -> InlineKeyboardBuilder:
     kb = InlineKeyboardBuilder()
     kb.button(text="✍️ Написать запись", callback_data="diary:write")
-    kb.button(text="💡 Подсказка дня", callback_data="diary:prompt")
     kb.button(text="📚 Прошлые записи", callback_data="diary:history")
     kb.adjust(1)
     return kb
@@ -47,15 +36,6 @@ async def cmd_diary(message: Message) -> None:
         "📔 <b>Дневник</b>\nЗаписи приватны — их видишь только ты.",
         reply_markup=_diary_menu_kb().as_markup(),
     )
-
-
-@router.callback_query(F.data == "diary:prompt")
-async def diary_prompt(callback: CallbackQuery, state: FSMContext) -> None:
-    await state.set_state(DiaryFlow.text)
-    await callback.message.answer(
-        f"💡 <i>{random.choice(PROMPTS)}</i>\n\nНапиши ответ — это станет записью дня."
-    )
-    await callback.answer()
 
 
 @router.callback_query(F.data == "diary:write")
