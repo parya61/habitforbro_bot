@@ -1,4 +1,4 @@
-"""Старт, регистрация, контроль доступа, помощь, общая отмена."""
+"""Старт, помощь, навигация, общая отмена."""
 from __future__ import annotations
 
 from aiogram import F, Router
@@ -7,12 +7,10 @@ from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from config import config
 from db.models import User
-from db.queries import create_user, get_user_by_tg, grant_access
+from db.queries import create_user, get_user_by_tg
 from keyboards.main_menu import MAIN_MENU
 from keyboards.nav import home_kb, main_inline_kb
-from states import Registration
 
 router = Router()
 
@@ -41,6 +39,7 @@ HELP_TEXT = (
     "<b>Команды:</b>\n"
     "/today — привычки на сегодня и отметки\n"
     "/habits — мои привычки (создать, изменить, архив)\n"
+    "/goals — цели и планы\n"
     "/diary — личный дневник\n"
     "/stats — статистика и серии\n"
     "/leaderboard — рейтинг участников\n"
@@ -54,24 +53,13 @@ HELP_TEXT = (
     "<b>❄️ Заморозка:</b>\n"
     "Можно пропустить до 2 дней в месяц без потери серии. "
     "Заморозки расходуются автоматически. Если пропусков больше 2 — серия обнуляется.\n\n"
-    "<b>⏰ Дедлайн отметок:</b>\n"
+    "<b>⏰ Отметки:</b>\n"
     "Привычки за сегодня — до конца дня. "
-    "Забыл отметить вчера? Можно до 10:00 утра следующего дня.\n\n"
+    "Забыл отметить вчера? Можно отметить в любое время.\n\n"
     "<b>🔐 Приватность:</b>\n"
     "Дневник по умолчанию приватный. Привычки можно сделать публичными "
     "(видят все участники) или скрытыми ото всех."
 )
-
-
-def _can_auto_access(telegram_id: int) -> bool:
-    """Можно ли пустить без кодового слова (админ, whitelist или код не задан)."""
-    if telegram_id == config.admin_id:
-        return True
-    if config.allowed_ids and telegram_id in config.allowed_ids:
-        return True
-    if not config.invite_code:
-        return True
-    return False
 
 
 @router.message(CommandStart())
@@ -81,34 +69,6 @@ async def cmd_start(message: Message, session: AsyncSession, state: FSMContext) 
     user = await get_user_by_tg(session, tg.id)
     if user is None:
         user = await create_user(session, tg.id, tg.username, tg.full_name)
-
-    if user.has_access:
-        await send_menu(message)
-        return
-
-    if _can_auto_access(tg.id):
-        await grant_access(session, user)
-        await send_menu(message)
-        return
-
-    # Требуется кодовое слово.
-    await state.set_state(Registration.code)
-    await message.answer(
-        "🔑 Это закрытый бот. Введите кодовое слово-приглашение, чтобы войти."
-    )
-
-
-@router.message(Registration.code)
-async def check_code(message: Message, session: AsyncSession, state: FSMContext) -> None:
-    code = (message.text or "").strip()
-    if code != config.invite_code:
-        await message.answer("❌ Неверное кодовое слово. Попробуйте ещё раз.")
-        return
-    user = await get_user_by_tg(session, message.from_user.id)
-    if user:
-        await grant_access(session, user)
-    await state.clear()
-    await message.answer("✅ Добро пожаловать!")
     await send_menu(message)
 
 
@@ -116,6 +76,7 @@ async def check_code(message: Message, session: AsyncSession, state: FSMContext)
 MENU_TEXTS = {
     "📋 Сегодня": "today",
     "➕ Привычки": "habits",
+    "🎯 Цели": "goals",
     "📔 Дневник": "diary",
     "📊 Статистика": "stats",
     "🏆 Рейтинг": "leaderboard",
@@ -138,6 +99,9 @@ async def _dispatch(dest: str, msg: Message, session: AsyncSession, user: User) 
     elif dest == "habits":
         from handlers.habits import show_habits_list
         await show_habits_list(msg, session, user)
+    elif dest == "goals":
+        from handlers.goals import show_goals_menu
+        await show_goals_menu(msg)
     elif dest == "diary":
         from handlers.diary import cmd_diary
         await cmd_diary(msg)

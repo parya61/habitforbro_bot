@@ -1,7 +1,7 @@
-"""Middleware: открывает сессию БД, подгружает пользователя и контролирует доступ.
+"""Middleware: открывает сессию БД и подгружает пользователя.
 
-Бот закрытый. Пока пользователь не получил доступ (кодовое слово или whitelist),
-ему доступен только сценарий /start и ввод кодового слова.
+Бот открытый. Любой пользователь получает доступ автоматически.
+Единственное требование — /start для создания записи в БД.
 """
 from __future__ import annotations
 
@@ -9,12 +9,10 @@ from collections.abc import Awaitable, Callable
 from typing import Any
 
 from aiogram import BaseMiddleware
-from aiogram.fsm.context import FSMContext
 from aiogram.types import CallbackQuery, Message, TelegramObject
 
 from db.database import get_session
 from db.queries import get_user_by_tg
-from states import Registration
 
 
 class AuthMiddleware(BaseMiddleware):
@@ -33,24 +31,23 @@ class AuthMiddleware(BaseMiddleware):
                 user = await get_user_by_tg(session, tg_user.id)
             data["user"] = user
 
-            if user is not None and user.has_access:
+            if user is not None:
+                if not user.has_access:
+                    user.has_access = True
+                    await session.commit()
                 return await handler(event, data)
-
-            # Нет доступа — пропускаем только /start и ввод кодового слова.
-            state: FSMContext | None = data.get("state")
-            current = await state.get_state() if state else None
 
             if isinstance(event, Message):
                 text = (event.text or "").strip()
-                if text == "/start" or current == Registration.code.state:
+                if text == "/start":
                     return await handler(event, data)
                 await event.answer(
-                    "🔒 Доступ закрыт. Нажмите /start, чтобы войти."
+                    "Нажми /start, чтобы начать."
                 )
                 return None
 
             if isinstance(event, CallbackQuery):
-                await event.answer("🔒 Сначала войдите через /start", show_alert=True)
+                await event.answer("Нажми /start, чтобы начать", show_alert=True)
                 return None
 
             return None

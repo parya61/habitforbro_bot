@@ -24,6 +24,11 @@ class DiaryFlow(StatesGroup):
     text = State()         # текст записи дневника
 
 
+class GoalFlow(StatesGroup):
+    title = State()        # текст новой цели
+    edit = State()         # новый текст существующей цели
+
+
 class RenameHabit(StatesGroup):
     title = State()        # новое название привычки
 

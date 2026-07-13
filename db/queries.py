@@ -14,6 +14,7 @@ from config import config
 from db.models import (
     Achievement,
     DiaryEntry,
+    Goal,
     Habit,
     HabitLog,
     Prize,
@@ -45,7 +46,7 @@ async def create_user(
         username=username,
         name=name,
         timezone=config.default_timezone,
-        has_access=False,
+        has_access=True,
     )
     session.add(user)
     await session.commit()
@@ -313,6 +314,71 @@ async def list_prizes(session: AsyncSession, limit: int = 12) -> list[Prize]:
         select(Prize).order_by(Prize.month.desc()).limit(limit)
     )
     return list(res.scalars().all())
+
+
+# ---------- Цели ----------
+
+
+async def create_goal(
+    session: AsyncSession, user_id: int, level: str, title: str
+) -> Goal:
+    goal = Goal(user_id=user_id, level=level, title=title)
+    session.add(goal)
+    await session.commit()
+    await session.refresh(goal)
+    return goal
+
+
+async def get_goal(session: AsyncSession, goal_id: int) -> Goal | None:
+    res = await session.execute(select(Goal).where(Goal.id == goal_id))
+    return res.scalar_one_or_none()
+
+
+async def list_goals(
+    session: AsyncSession, user_id: int, level: str
+) -> list[Goal]:
+    res = await session.execute(
+        select(Goal)
+        .where(Goal.user_id == user_id, Goal.level == level, Goal.status == "active")
+        .order_by(Goal.created_at)
+    )
+    return list(res.scalars().all())
+
+
+async def list_achieved_goals(
+    session: AsyncSession, user_id: int, limit: int = 30
+) -> list[Goal]:
+    res = await session.execute(
+        select(Goal)
+        .where(Goal.user_id == user_id, Goal.status == "achieved")
+        .order_by(Goal.achieved_at.desc())
+        .limit(limit)
+    )
+    return list(res.scalars().all())
+
+
+async def update_goal_title(
+    session: AsyncSession, goal: Goal, title: str
+) -> None:
+    from datetime import datetime
+
+    goal.title = title
+    goal.updated_at = datetime.utcnow()
+    await session.commit()
+
+
+async def achieve_goal(session: AsyncSession, goal: Goal) -> None:
+    from datetime import datetime
+
+    goal.status = "achieved"
+    goal.achieved_at = datetime.utcnow()
+    goal.updated_at = datetime.utcnow()
+    await session.commit()
+
+
+async def delete_goal(session: AsyncSession, goal: Goal) -> None:
+    await session.delete(goal)
+    await session.commit()
 
 
 # ---------- Чайный профиль ----------

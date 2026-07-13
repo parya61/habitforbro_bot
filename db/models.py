@@ -53,6 +53,7 @@ class User(Base):
     habits: Mapped[list["Habit"]] = relationship(back_populates="user")
     diary_entries: Mapped[list["DiaryEntry"]] = relationship(back_populates="user")
     achievements: Mapped[list["Achievement"]] = relationship(back_populates="user")
+    goals: Mapped[list["Goal"]] = relationship(back_populates="user")
 
 
 class Habit(Base):
@@ -165,6 +166,21 @@ class Prize(Base):
     winner: Mapped["User | None"] = relationship(foreign_keys=[winner_user_id])
     winner_2: Mapped["User | None"] = relationship(foreign_keys=[winner_2_user_id])
     winner_3: Mapped["User | None"] = relationship(foreign_keys=[winner_3_user_id])
+
+
+class Goal(Base):
+    __tablename__ = "goals"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    level: Mapped[str] = mapped_column(String(16))
+    title: Mapped[str] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(16), default="active")
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    achieved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+
+    user: Mapped["User"] = relationship(back_populates="goals")
 
 
 class TeaProfile(Base):

@@ -22,6 +22,7 @@ BOT_COMMANDS = [
     BotCommand(command="start", description="🏠 Главное меню"),
     BotCommand(command="today", description="📋 Привычки на сегодня"),
     BotCommand(command="habits", description="➕ Мои привычки"),
+    BotCommand(command="goals", description="🎯 Цели"),
     BotCommand(command="diary", description="📔 Дневник"),
     BotCommand(command="stats", description="📊 Статистика"),
     BotCommand(command="leaderboard", description="🏆 Рейтинг"),
