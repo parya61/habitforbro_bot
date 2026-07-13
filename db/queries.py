@@ -376,6 +376,18 @@ async def achieve_goal(session: AsyncSession, goal: Goal) -> None:
     await session.commit()
 
 
+async def set_goal_reminder(
+    session: AsyncSession, goal: Goal, remind_at: datetime
+) -> None:
+    goal.remind_at = remind_at
+    await session.commit()
+
+
+async def clear_goal_reminder(session: AsyncSession, goal: Goal) -> None:
+    goal.remind_at = None
+    await session.commit()
+
+
 async def delete_goal(session: AsyncSession, goal: Goal) -> None:
     await session.delete(goal)
     await session.commit()

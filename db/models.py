@@ -179,6 +179,7 @@ class Goal(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
     achieved_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    remind_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
 
     user: Mapped["User"] = relationship(back_populates="goals")
 

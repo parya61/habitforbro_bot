@@ -21,6 +21,7 @@ _COLUMN_MIGRATIONS = [
     ("tea_sessions", "tea_grams", "ALTER TABLE tea_sessions ADD COLUMN tea_grams REAL"),
     ("tea_sessions", "water_ml", "ALTER TABLE tea_sessions ADD COLUMN water_ml INTEGER"),
     ("tea_sessions", "brewing_method", "ALTER TABLE tea_sessions ADD COLUMN brewing_method VARCHAR(32)"),
+    ("goals", "remind_at", "ALTER TABLE goals ADD COLUMN remind_at DATETIME"),
 ]
 
 

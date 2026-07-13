@@ -27,6 +27,7 @@ class DiaryFlow(StatesGroup):
 class GoalFlow(StatesGroup):
     title = State()        # текст новой цели
     edit = State()         # новый текст существующей цели
+    remind = State()       # время напоминания (ЧЧ:ММ)
 
 
 class RenameHabit(StatesGroup):

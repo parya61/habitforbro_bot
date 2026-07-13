@@ -1,6 +1,10 @@
 """Цели: постановка и отслеживание целей разного масштаба."""
 from __future__ import annotations
 
+import re
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
 from aiogram import F, Router
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
@@ -11,11 +15,13 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from db.models import User
 from db.queries import (
     achieve_goal,
+    clear_goal_reminder,
     create_goal,
     delete_goal,
     get_goal,
     list_achieved_goals,
     list_goals,
+    set_goal_reminder,
     update_goal_title,
 )
 from keyboards.nav import home_kb
@@ -31,11 +37,34 @@ LEVELS = {
     "tomorrow": "⏰ На завтра",
 }
 
-LEVEL_TITLES = {
-    "life": "🌟 Цели на жизнь",
-    "year": "📅 Цели на год",
-    "month": "🗓 Цели на месяц",
-    "tomorrow": "⏰ Цели на завтра",
+LEVEL_DESCRIPTIONS = {
+    "life": (
+        "🌟 <b>Цели на жизнь</b>\n\n"
+        "Это твои самые большие мечты и стремления. "
+        "Кем ты хочешь стать? Чего достичь? "
+        "Представь лучшую версию себя — и запиши, к чему идёшь.\n\n"
+        "Эти цели задают направление всему остальному."
+    ),
+    "year": (
+        "📅 <b>Цели на год</b>\n\n"
+        "Что реально достижимо за этот год? "
+        "Разбей глобальные мечты на конкретные шаги. "
+        "Год — достаточно, чтобы изменить многое, "
+        "если двигаться последовательно."
+    ),
+    "month": (
+        "🗓 <b>Цели на месяц</b>\n\n"
+        "Фокусируйся на главном. "
+        "Что приблизит тебя к годовым целям прямо сейчас? "
+        "3–5 целей на месяц — оптимально."
+    ),
+    "tomorrow": (
+        "⏰ <b>Цели на завтра</b>\n\n"
+        "Конкретные дела и задачи на ближайший день. "
+        "Позвонить, встретиться, сделать, проверить — "
+        "всё, что важно не забыть.\n\n"
+        "💡 Можно установить напоминание по времени."
+    ),
 }
 
 LEVEL_PROMPTS = {
@@ -49,6 +78,13 @@ MENU_TEXT = (
     "🎯 <b>Цели</b>\n\n"
     "Ставь цели разного масштаба — от глобальных мечт до планов на завтра."
 )
+
+
+def _tz(name: str) -> ZoneInfo:
+    try:
+        return ZoneInfo(name)
+    except Exception:
+        return ZoneInfo("Europe/Moscow")
 
 
 def _goals_menu_kb():
@@ -77,10 +113,18 @@ def _level_kb(level: str, goals):
 def _goal_detail_kb(goal):
     kb = InlineKeyboardBuilder()
     kb.button(text="✏️ Изменить", callback_data=f"goals:edit:{goal.id}")
+    if goal.level == "tomorrow":
+        if goal.remind_at:
+            kb.button(text="🔕 Убрать напоминание", callback_data=f"goals:unrem:{goal.id}")
+        else:
+            kb.button(text="⏰ Напомнить", callback_data=f"goals:rem:{goal.id}")
     kb.button(text="✅ Достигнута!", callback_data=f"goals:ach:{goal.id}")
     kb.button(text="🗑 Удалить", callback_data=f"goals:del:{goal.id}")
     kb.button(text="⬅️ Назад", callback_data=f"goals:level:{goal.level}")
-    kb.adjust(2, 1, 1)
+    if goal.level == "tomorrow":
+        kb.adjust(2, 2, 1)
+    else:
+        kb.adjust(2, 1, 1)
     return kb
 
 
@@ -90,6 +134,14 @@ def _back_to_level_kb(level: str):
     kb.button(text="🏠 Меню", callback_data="go:menu")
     kb.adjust(2)
     return kb
+
+
+def _remind_display(goal, user) -> str:
+    if not goal.remind_at:
+        return ""
+    tz = _tz(user.timezone)
+    local = goal.remind_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
+    return f"⏰ Напоминание: {local.strftime('%d.%m в %H:%M')}"
 
 
 # ---- Entry points ----
@@ -128,19 +180,23 @@ async def goals_by_level(
         return
 
     goals = await list_goals(session, user.id, level)
-    title = LEVEL_TITLES[level]
 
     if not goals:
-        text = f"{title}\n\nПока нет целей. Добавь первую!"
+        text = LEVEL_DESCRIPTIONS[level] + "\n\nДобавь первую цель!"
     else:
-        lines = [f"{title}\n"]
+        lines = [f"<b>{LEVELS[level]}</b>\n"]
+        tz = _tz(user.timezone)
         for i, g in enumerate(goals, 1):
             date_str = g.created_at.strftime("%d.%m.%Y")
-            edited = ""
-            if g.updated_at and g.updated_at > g.created_at:
-                if (g.updated_at - g.created_at).total_seconds() > 60:
-                    edited = f" · изм. {g.updated_at.strftime('%d.%m.%Y')}"
-            lines.append(f"{i}. {esc(g.title)} <i>({date_str}{edited})</i>")
+            parts = [f"{i}. {esc(g.title)}"]
+            if g.remind_at:
+                local = g.remind_at.replace(tzinfo=ZoneInfo("UTC")).astimezone(tz)
+                parts.append(f"⏰ {local.strftime('%H:%M')}")
+            if g.updated_at and (g.updated_at - g.created_at).total_seconds() > 60:
+                parts.append(f"<i>({date_str} · изм. {g.updated_at.strftime('%d.%m.%Y')})</i>")
+            else:
+                parts.append(f"<i>({date_str})</i>")
+            lines.append(" ".join(parts))
         text = "\n".join(lines)
 
     await callback.message.edit_text(
@@ -170,6 +226,9 @@ async def goal_detail(
     ]
     if goal.updated_at and (goal.updated_at - goal.created_at).total_seconds() > 60:
         lines.append(f"✏️ Изменено: {goal.updated_at.strftime('%d.%m.%Y')}")
+    remind = _remind_display(goal, user)
+    if remind:
+        lines.append(remind)
 
     await callback.message.edit_text(
         "\n".join(lines), reply_markup=_goal_detail_kb(goal).as_markup()
@@ -212,9 +271,19 @@ async def goal_add_save(
     await state.clear()
     goal = await create_goal(session, user.id, level, title)
 
+    if level == "tomorrow":
+        kb = InlineKeyboardBuilder()
+        kb.button(text="⏰ Установить напоминание", callback_data=f"goals:rem:{goal.id}")
+        kb.button(text=f"⬅️ {LEVELS[level]}", callback_data=f"goals:level:{level}")
+        kb.button(text="🏠 Меню", callback_data="go:menu")
+        kb.adjust(1, 2)
+        markup = kb.as_markup()
+    else:
+        markup = _back_to_level_kb(level).as_markup()
+
     await message.answer(
         f"✅ Цель добавлена!\n\n<b>{esc(goal.title)}</b>",
-        reply_markup=_back_to_level_kb(level).as_markup(),
+        reply_markup=markup,
     )
 
 
@@ -267,6 +336,91 @@ async def goal_edit_save(
     await message.answer(
         f"✅ Цель обновлена!\n\n<b>{esc(title)}</b>",
         reply_markup=_back_to_level_kb(goal.level).as_markup(),
+    )
+
+
+# ---- Reminder ----
+
+@router.callback_query(F.data.startswith("goals:rem:"))
+async def goal_remind_start(
+    callback: CallbackQuery, state: FSMContext, session: AsyncSession, user: User
+) -> None:
+    goal_id = int(callback.data.split(":")[2])
+    goal = await get_goal(session, goal_id)
+    if goal is None or goal.user_id != user.id:
+        await callback.answer("Цель не найдена", show_alert=True)
+        return
+
+    await state.set_state(GoalFlow.remind)
+    await state.update_data(goal_remind_id=goal_id)
+
+    kb = InlineKeyboardBuilder()
+    kb.button(text="✖️ Отмена", callback_data=f"goals:view:{goal_id}")
+    await callback.message.answer(
+        "⏰ Во сколько напомнить?\n\nВведи время в формате <b>ЧЧ:ММ</b>, например 09:00",
+        reply_markup=kb.as_markup(),
+    )
+    await callback.answer()
+
+
+@router.message(GoalFlow.remind)
+async def goal_remind_save(
+    message: Message, state: FSMContext, session: AsyncSession, user: User
+) -> None:
+    text = (message.text or "").strip()
+    match = re.match(r"^(\d{1,2})[:\.](\d{2})$", text)
+    if not match:
+        await message.answer("Введи время в формате ЧЧ:ММ, например 09:00 или 14:30")
+        return
+    hour, minute = int(match.group(1)), int(match.group(2))
+    if not (0 <= hour <= 23 and 0 <= minute <= 59):
+        await message.answer("Неверное время. Попробуй ещё раз (ЧЧ:ММ):")
+        return
+
+    data = await state.get_data()
+    goal_id = data.get("goal_remind_id")
+    await state.clear()
+
+    goal = await get_goal(session, goal_id)
+    if goal is None or goal.user_id != user.id:
+        await message.answer("Цель не найдена.")
+        return
+
+    tz = _tz(user.timezone)
+    now_local = datetime.now(tz)
+    target_time = now_local.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if target_time <= now_local:
+        target_time += timedelta(days=1)
+    remind_utc = target_time.astimezone(ZoneInfo("UTC")).replace(tzinfo=None)
+
+    await set_goal_reminder(session, goal, remind_utc)
+
+    display = target_time.strftime("%d.%m в %H:%M")
+    await message.answer(
+        f"✅ Напоминание установлено на <b>{display}</b>\n\n"
+        f"🎯 {esc(goal.title)}",
+        reply_markup=_back_to_level_kb(goal.level).as_markup(),
+    )
+
+
+@router.callback_query(F.data.startswith("goals:unrem:"))
+async def goal_remind_clear(
+    callback: CallbackQuery, session: AsyncSession, user: User
+) -> None:
+    goal_id = int(callback.data.split(":")[2])
+    goal = await get_goal(session, goal_id)
+    if goal is None or goal.user_id != user.id:
+        await callback.answer("Цель не найдена", show_alert=True)
+        return
+
+    await clear_goal_reminder(session, goal)
+    await callback.answer("Напоминание убрано")
+
+    level_label = LEVELS.get(goal.level, "")
+    date_str = goal.created_at.strftime("%d.%m.%Y")
+    lines = [f"{level_label}\n", f"<b>{esc(goal.title)}</b>\n", f"📌 Добавлено: {date_str}"]
+    await callback.message.edit_text(
+        "\n".join(lines), reply_markup=_goal_detail_kb(goal).as_markup()
     )
 
 

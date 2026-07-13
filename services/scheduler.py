@@ -67,6 +67,10 @@ async def setup_scheduler(bot: Bot) -> None:
         _month_start_announce,
         CronTrigger(day=1, hour=10, minute=0, timezone=base_tz),
     )
+    _scheduler.add_job(
+        _check_goal_reminders,
+        CronTrigger(minute="*", timezone=base_tz),
+    )
 
     async with get_session() as session:
         for user in await list_users(session):
@@ -296,6 +300,36 @@ async def _month_start_announce() -> None:
         for user in users:
             await _safe_send(user.telegram_id, text)
         logger.info("PRIZE | Анонс отправлен %d пользователям", len(users))
+
+
+async def _check_goal_reminders() -> None:
+    from datetime import datetime
+
+    from sqlalchemy import select
+    from sqlalchemy.orm import joinedload
+
+    from db.models import Goal
+
+    now = datetime.utcnow()
+    async with get_session() as session:
+        res = await session.execute(
+            select(Goal)
+            .options(joinedload(Goal.user))
+            .where(
+                Goal.remind_at.isnot(None),
+                Goal.remind_at <= now,
+                Goal.status == "active",
+            )
+        )
+        goals = list(res.scalars().all())
+        for goal in goals:
+            await _safe_send(
+                goal.user.telegram_id,
+                f"⏰ Напоминание о цели:\n\n<b>{esc(goal.title)}</b>",
+            )
+            goal.remind_at = None
+        if goals:
+            await session.commit()
 
 
 async def _safe_send(chat_id: int, text: str, markup=None) -> None:
