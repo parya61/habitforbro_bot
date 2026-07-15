@@ -25,21 +25,21 @@ logger = logging.getLogger(__name__)
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 DEEPSEEK_MODEL = "deepseek-chat"
 
-SYSTEM_PROMPT = """Ты — аналитик привычек и личного развития в боте «Дневник привычек».
+SYSTEM_PROMPT = """Ты — личный аналитик привычек и финансов в боте «Дневник привычек».
 Тебя зовут Керя. Ты спокойный, прямой и по-доброму честный. Говоришь на «ты», просто и тепло.
 
-Тебе дан полный контекст пользователя: привычки, серии, дневник, цели, статистика.
-Твоя задача — помочь человеку стать дисциплинированнее и ближе к его целям.
+Тебе дан полный контекст пользователя: привычки, серии, дневник, цели, статистика, финансы.
+Твоя задача — помочь человеку стать дисциплинированнее, ближе к целям и финансово осознаннее.
 
 Правила:
 - Анализируй факты: регулярность, пропуски, серии, настроение из дневника, прогресс по целям.
-- Ищи закономерности: когда пропускает, что мешает, что помогает.
-- Давай конкретные, применимые советы — не абстрактные мотивашки.
-- Не читай нравоучений. Не стыди. Не льсти.
-- Если видишь реальный прогресс — отметь его коротко, без восторгов.
-- Если видишь проблему — скажи прямо и предложи одно конкретное действие.
+- Анализируй финансы: расходы по категориям, тренды, аномалии, соотношение доход/расход.
+- Ищи закономерности: когда пропускает привычки, куда уходят деньги, что можно оптимизировать.
+- Давай конкретные, применимые советы с цифрами — не абстрактные мотивашки.
+- Не читай нравоучений. Не стыди. Не льсти. Не морализируй по поводу трат.
+- Если видишь аномалию в расходах — скажи прямо: «кафе +40% к среднему» с конкретикой.
 - Отвечай коротко (до 1500 символов). Не лей воду.
-- Помни: ты видишь только данные этого конкретного пользователя. Никогда не упоминай данные других.
+- Помни: ты видишь только данные этого конкретного пользователя.
 - Общайся по-русски."""
 
 
@@ -112,7 +112,90 @@ async def build_user_context(session: AsyncSession, user: User) -> str:
             lines.append(f"{entry.entry_date}{mood}: {text}")
         lines.append("")
 
+    # Финансы
+    await _append_finance_context(session, user, today, lines)
+
     return "\n".join(lines)
+
+
+async def _append_finance_context(
+    session: AsyncSession, user: User, today: date, lines: list[str]
+) -> None:
+    from db.finance_queries import (
+        category_totals,
+        count_categories,
+        list_transactions,
+        monthly_totals,
+    )
+    from services.finance import MONTH_NAMES, fmt_money
+
+    if await count_categories(session, user.id) == 0:
+        return
+
+    cur_month = f"{today.year}-{today.month:02d}"
+    income, expenses = await monthly_totals(session, user.id, cur_month)
+
+    if not income and not expenses:
+        return
+
+    lines.append("== ФИНАНСЫ ==")
+    month_name = MONTH_NAMES[today.month]
+    balance = income - expenses
+    lines.append(f"Текущий месяц ({month_name} {today.year}):")
+    lines.append(f"  Доходы:  +{fmt_money(income)}")
+    lines.append(f"  Расходы: −{fmt_money(expenses)}")
+    sign = "+" if balance >= 0 else ""
+    lines.append(f"  Баланс:  {sign}{fmt_money(abs(balance))}")
+
+    cats = await category_totals(session, user.id, cur_month, "expense")
+    if cats:
+        lines.append("Расходы по категориям:")
+        for icon, name, total in cats:
+            pct = int(total / expenses * 100) if expenses > 0 else 0
+            lines.append(f"  {icon} {name}: {fmt_money(total)} ({pct}%)")
+
+    prev_m = today.month - 1
+    prev_y = today.year
+    if prev_m == 0:
+        prev_m = 12
+        prev_y -= 1
+    prev_month = f"{prev_y}-{prev_m:02d}"
+    prev_inc, prev_exp = await monthly_totals(session, user.id, prev_month)
+    if prev_exp > 0:
+        diff = expenses - prev_exp
+        diff_pct = int(diff / prev_exp * 100)
+        prev_name = MONTH_NAMES[prev_m]
+        lines.append(
+            f"Сравнение: расходы {month_name} vs {prev_name}: "
+            f"{'+' if diff >= 0 else ''}{diff_pct}% ({'+' if diff >= 0 else ''}{fmt_money(abs(diff))})"
+        )
+
+        prev_cats = await category_totals(session, user.id, prev_month, "expense")
+        prev_map = {name: total for _, name, total in prev_cats}
+        anomalies = []
+        for icon, name, total in cats:
+            prev_total = prev_map.get(name, 0)
+            if prev_total > 0:
+                cat_diff_pct = int((total - prev_total) / prev_total * 100)
+                if cat_diff_pct > 30:
+                    anomalies.append(f"  {icon} {name}: +{cat_diff_pct}% к прошлому месяцу")
+                elif cat_diff_pct < -30:
+                    anomalies.append(f"  {icon} {name}: {cat_diff_pct}% к прошлому месяцу")
+        if anomalies:
+            lines.append("Аномалии:")
+            lines.extend(anomalies)
+
+    txs = await list_transactions(session, user.id, limit=10)
+    if txs:
+        lines.append("Последние операции:")
+        for tx in txs:
+            d = tx.tx_date.strftime("%d.%m")
+            s = "+" if tx.tx_type == "income" else "−"
+            cat_name = tx.category.name if tx.category else "?"
+            desc = tx.merchant or cat_name
+            lines.append(f"  {d} {s}{fmt_money(tx.amount)} {desc} ({cat_name})")
+
+    lines.append("")
 
 
 @dataclass
