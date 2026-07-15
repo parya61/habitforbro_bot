@@ -115,6 +115,9 @@ async def build_user_context(session: AsyncSession, user: User) -> str:
     # Финансы
     await _append_finance_context(session, user, today, lines)
 
+    # Продукты
+    await _append_grocery_context(session, user, today, lines)
+
     return "\n".join(lines)
 
 
@@ -194,6 +197,41 @@ async def _append_finance_context(
             cat_name = tx.category.name if tx.category else "?"
             desc = tx.merchant or cat_name
             lines.append(f"  {d} {s}{fmt_money(tx.amount)} {desc} ({cat_name})")
+
+    lines.append("")
+
+
+async def _append_grocery_context(
+    session: AsyncSession, user: User, today: date, lines: list[str]
+) -> None:
+    from db.grocery_queries import count_items, group_by_store, list_due_items
+    from services.grocery import STORE_NAMES
+
+    total = await count_items(session, user.id)
+    if total == 0:
+        return
+
+    due = await list_due_items(session, user.id, today)
+    lines.append("== ПРОДУКТЫ ==")
+    lines.append(f"Каталог: {total} позиций.")
+    lines.append(f"Пора купить: {len(due)} позиций.")
+
+    if due:
+        grouped = group_by_store(due)
+        parts = []
+        for store, items in grouped.items():
+            name = STORE_NAMES.get(store, store)
+            parts.append(f"{name}: {len(items)}")
+        lines.append(f"По магазинам: {', '.join(parts)}.")
+
+        overdue = []
+        for item in due:
+            if item.last_bought:
+                days = (today - item.last_bought).days
+                if days > item.buy_freq_days * 2:
+                    overdue.append(f"{item.icon} {item.name} ({days} дн. назад)")
+        if overdue:
+            lines.append(f"Давно не покупали: {', '.join(overdue[:5])}.")
 
     lines.append("")
 

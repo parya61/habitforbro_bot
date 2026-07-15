@@ -130,5 +130,9 @@ class FinanceFlow(StatesGroup):
     income_input = State()   # ввод дохода: "113500"
 
 
+class GroceryFlow(StatesGroup):
+    add_name = State()       # название продукта
+
+
 class AnalyticsFlow(StatesGroup):
     chat = State()         # диалог с AI-аналитиком

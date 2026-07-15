@@ -244,6 +244,25 @@ class AnalyticsSession(Base):
     user: Mapped["User"] = relationship()
 
 
+class GroceryItem(Base):
+    __tablename__ = "grocery_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    category: Mapped[str] = mapped_column(String(32))
+    icon: Mapped[str] = mapped_column(String(8))
+    usual_store: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    usual_qty: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    buy_freq_days: Mapped[int] = mapped_column(Integer, default=7)
+    last_bought: Mapped[date | None] = mapped_column(Date, nullable=True)
+    for_whom: Mapped[str] = mapped_column(String(16), default="all")
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    user: Mapped["User"] = relationship()
+
+
 class FinCategory(Base):
     __tablename__ = "fin_categories"
 

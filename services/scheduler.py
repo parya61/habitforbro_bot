@@ -71,6 +71,10 @@ async def setup_scheduler(bot: Bot) -> None:
         _check_goal_reminders,
         CronTrigger(minute="*", timezone=base_tz),
     )
+    _scheduler.add_job(
+        _friday_shopping_reminder,
+        CronTrigger(day_of_week="fri", hour=16, minute=0, timezone=base_tz),
+    )
 
     async with get_session() as session:
         for user in await list_users(session):
@@ -330,6 +334,29 @@ async def _check_goal_reminders() -> None:
             goal.remind_at = None
         if goals:
             await session.commit()
+
+
+async def _friday_shopping_reminder() -> None:
+    async with get_session() as session:
+        user = await get_user_by_tg(session, config.admin_id)
+        if not user:
+            return
+        from db.grocery_queries import count_items, group_by_store, list_due_items
+        from services.grocery import ensure_seeded, format_shopping_list
+
+        await ensure_seeded(session, user.id)
+        if await count_items(session, user.id) == 0:
+            return
+        due = await list_due_items(session, user.id)
+        if not due:
+            return
+        grouped = group_by_store(due)
+        text = format_shopping_list(grouped, len(due))
+        await _safe_send(
+            user.telegram_id,
+            f"🛒 <b>Пятница! Пора составить список покупок</b>\n\n{text}"
+            f"\nОткрой /finance → Продукты, чтобы отметить купленное.",
+        )
 
 
 async def _safe_send(chat_id: int, text: str, markup=None) -> None:

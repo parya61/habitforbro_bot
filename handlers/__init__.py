@@ -8,6 +8,7 @@ from handlers import (
     fallback,
     finance,
     goals,
+    grocery,
     habits,
     leaderboard,
     members,
@@ -36,6 +37,7 @@ def get_routers() -> list[Router]:
         prizes.router,
         analytics.router,
         finance.router,
+        grocery.router,
         settings.router,
         fallback.router,
     ]
