@@ -232,6 +232,18 @@ class TeawareItem(Base):
     user: Mapped["User"] = relationship()
 
 
+class AnalyticsSession(Base):
+    __tablename__ = "analytics_sessions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    started_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    messages_used: Mapped[int] = mapped_column(Integer, default=0)
+    max_messages: Mapped[int] = mapped_column(Integer, default=5)
+
+    user: Mapped["User"] = relationship()
+
+
 class TeaSession(Base):
     __tablename__ = "tea_sessions"
 

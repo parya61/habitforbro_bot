@@ -3,6 +3,7 @@ from aiogram import Router
 
 from handlers import (
     admin,
+    analytics,
     diary,
     fallback,
     goals,
@@ -32,6 +33,7 @@ def get_routers() -> list[Router]:
         leaderboard.router,
         members.router,
         prizes.router,
+        analytics.router,
         settings.router,
         fallback.router,
     ]

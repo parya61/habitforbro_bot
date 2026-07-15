@@ -27,6 +27,7 @@ class Config:
     db_path: str = "habits.db"
     group_chat_id: int | None = None
     vpn_prize_urls: list[str] = field(default_factory=list)
+    deepseek_api_key: str = ""
 
     @property
     def db_url(self) -> str:
@@ -63,6 +64,7 @@ def load_config() -> Config:
         db_path=os.getenv("DB_PATH", "habits.db").strip(),
         group_chat_id=group_chat_id,
         vpn_prize_urls=vpn_urls,
+        deepseek_api_key=os.getenv("DEEPSEEK_API_KEY", "").strip(),
     )
 
 

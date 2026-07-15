@@ -123,3 +123,7 @@ class TeawareEditFlow(StatesGroup):
 
 class TeaMessageFlow(StatesGroup):
     text = State()         # текст сообщения о чае
+
+
+class AnalyticsFlow(StatesGroup):
+    chat = State()         # диалог с AI-аналитиком
