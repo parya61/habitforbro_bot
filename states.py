@@ -125,5 +125,10 @@ class TeaMessageFlow(StatesGroup):
     text = State()         # текст сообщения о чае
 
 
+class FinanceFlow(StatesGroup):
+    expense_input = State()  # ввод расхода: "1500 Пятёрочка"
+    income_input = State()   # ввод дохода: "113500"
+
+
 class AnalyticsFlow(StatesGroup):
     chat = State()         # диалог с AI-аналитиком

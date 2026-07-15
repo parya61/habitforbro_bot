@@ -6,6 +6,7 @@ from handlers import (
     analytics,
     diary,
     fallback,
+    finance,
     goals,
     habits,
     leaderboard,
@@ -34,6 +35,7 @@ def get_routers() -> list[Router]:
         members.router,
         prizes.router,
         analytics.router,
+        finance.router,
         settings.router,
         fallback.router,
     ]

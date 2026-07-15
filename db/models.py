@@ -244,6 +244,52 @@ class AnalyticsSession(Base):
     user: Mapped["User"] = relationship()
 
 
+class FinCategory(Base):
+    __tablename__ = "fin_categories"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(64))
+    icon: Mapped[str] = mapped_column(String(8))
+    cat_type: Mapped[str] = mapped_column(String(8))
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    user: Mapped["User"] = relationship()
+
+
+class MerchantRule(Base):
+    __tablename__ = "merchant_rules"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    pattern: Mapped[str] = mapped_column(String(128))
+    category_id: Mapped[int] = mapped_column(ForeignKey("fin_categories.id"))
+    match_count: Mapped[int] = mapped_column(Integer, default=0)
+
+    user: Mapped["User"] = relationship()
+    category: Mapped["FinCategory"] = relationship()
+
+
+class FinTransaction(Base):
+    __tablename__ = "fin_transactions"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    amount: Mapped[float] = mapped_column(Float)
+    tx_type: Mapped[str] = mapped_column(String(8))
+    category_id: Mapped[int | None] = mapped_column(
+        ForeignKey("fin_categories.id"), nullable=True
+    )
+    merchant: Mapped[str | None] = mapped_column(String(128), nullable=True)
+    account: Mapped[str] = mapped_column(String(16), default="debit")
+    tx_date: Mapped[date] = mapped_column(Date, index=True)
+    note: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship()
+    category: Mapped["FinCategory | None"] = relationship()
+
+
 class TeaSession(Base):
     __tablename__ = "tea_sessions"
 

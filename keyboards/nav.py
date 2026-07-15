@@ -21,9 +21,10 @@ def main_inline_kb() -> InlineKeyboardMarkup:
     kb.button(text="🎯 Цели", callback_data="go:goals")
     kb.button(text="🎁 Призы", callback_data="go:prizes")
     kb.button(text="🧠 Аналитика", callback_data="go:analytics")
+    kb.button(text="💰 Финансы", callback_data="go:finance")
     kb.button(text="⚙️ Настройки", callback_data="go:settings")
     kb.button(text="ℹ️ Помощь", callback_data="go:help")
-    kb.adjust(2, 2, 2, 2, 2, 2)
+    kb.adjust(2, 2, 2, 2, 2, 2, 1)
     return kb.as_markup()
 
 
