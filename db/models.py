@@ -244,6 +244,40 @@ class AnalyticsSession(Base):
     user: Mapped["User"] = relationship()
 
 
+class Person(Base):
+    __tablename__ = "persons"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    birthday: Mapped[date | None] = mapped_column(Date, nullable=True)
+    rel_type: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship()
+    gifts: Mapped[list["GiftIdea"]] = relationship(back_populates="person", cascade="all, delete-orphan")
+
+
+class GiftIdea(Base):
+    __tablename__ = "gift_ideas"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    person_id: Mapped[int | None] = mapped_column(ForeignKey("persons.id"), nullable=True)
+    title: Mapped[str] = mapped_column(String(256))
+    price_estimate: Mapped[float | None] = mapped_column(Float, nullable=True)
+    url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="idea")
+    event: Mapped[str | None] = mapped_column(String(32), nullable=True)
+    given_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship()
+    person: Mapped["Person | None"] = relationship(back_populates="gifts")
+
+
 class CafePlace(Base):
     __tablename__ = "cafe_places"
 

@@ -75,6 +75,10 @@ async def setup_scheduler(bot: Bot) -> None:
         _friday_shopping_reminder,
         CronTrigger(day_of_week="fri", hour=16, minute=0, timezone=base_tz),
     )
+    _scheduler.add_job(
+        _gift_reminder_check,
+        CronTrigger(hour=10, minute=0, timezone=base_tz),
+    )
 
     async with get_session() as session:
         for user in await list_users(session):
@@ -334,6 +338,48 @@ async def _check_goal_reminders() -> None:
             goal.remind_at = None
         if goals:
             await session.commit()
+
+
+async def _gift_reminder_check() -> None:
+    from datetime import date as date_cls
+
+    from db.gift_queries import list_persons
+    from services.gift import (
+        ALERT_DAYS,
+        REL_LABELS,
+        days_label,
+        upcoming_birthdays,
+        upcoming_holidays,
+    )
+
+    async with get_session() as session:
+        user = await get_user_by_tg(session, config.admin_id)
+        if not user:
+            return
+        today = date_cls.today()
+        persons = await list_persons(session, user.id)
+        bdays = upcoming_birthdays(persons, today, days_ahead=ALERT_DAYS)
+        holidays = upcoming_holidays(today, days_ahead=ALERT_DAYS)
+
+        alerts = []
+        for hdate, hname, delta in holidays:
+            if delta in (21, 14, 7, 3, 1, 0):
+                alerts.append(f"{hname} — {days_label(delta)}")
+
+        for person, bdate, delta, age in bdays:
+            if delta in (21, 14, 7, 3, 1, 0):
+                rel = REL_LABELS.get(person.rel_type, "")
+                rel_str = f" ({rel})" if rel else ""
+                gifts = person.gifts or []
+                ideas = [g for g in gifts if g.status == "idea"]
+                hint = f"\n  💡 Идеи: {', '.join(g.title for g in ideas[:3])}" if ideas else ""
+                alerts.append(
+                    f"🎂 {person.name}{rel_str} — {age} лет, {days_label(delta)}{hint}"
+                )
+
+        if alerts:
+            text = "🎁 <b>Напоминание о подарках</b>\n\n" + "\n".join(alerts)
+            await _safe_send(user.telegram_id, text)
 
 
 async def _friday_shopping_reminder() -> None:

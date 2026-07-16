@@ -129,6 +129,9 @@ async def build_user_context(session: AsyncSession, user: User) -> str:
     # Кафе
     await _append_cafe_context(session, user, lines)
 
+    # Подарки
+    await _append_gift_context(session, user, today, lines)
+
     return "\n".join(lines)
 
 
@@ -334,6 +337,47 @@ async def _append_cafe_context(
             s = f" {fmt_money(v.spent)}" if v.spent else ""
             dish = f" — {v.dish}" if v.dish else ""
             lines.append(f"  {d} ☕ {name}{r}{s}{dish}")
+
+    lines.append("")
+
+
+async def _append_gift_context(
+    session: AsyncSession, user: User, today: date, lines: list[str]
+) -> None:
+    from db.gift_queries import count_persons, list_all_ideas, list_persons
+    from services.gift import (
+        REL_LABELS,
+        days_label,
+        upcoming_birthdays,
+        upcoming_holidays,
+    )
+
+    total = await count_persons(session, user.id)
+    if total == 0:
+        return
+
+    lines.append("== ПОДАРКИ ==")
+    persons = await list_persons(session, user.id)
+    lines.append(f"Людей: {total}")
+
+    bdays = upcoming_birthdays(persons, today, days_ahead=30)
+    holidays = upcoming_holidays(today, days_ahead=30)
+
+    if holidays:
+        for hdate, hname, delta in holidays:
+            lines.append(f"  {hname} — {days_label(delta)}")
+
+    if bdays:
+        for person, bdate, delta, age in bdays:
+            rel = REL_LABELS.get(person.rel_type, "")
+            lines.append(f"  🎂 {person.name} ({rel}) — {age} лет, {days_label(delta)}")
+
+    ideas = await list_all_ideas(session, user.id)
+    if ideas:
+        lines.append(f"Идей подарков: {len(ideas)}")
+        for g in ideas[:5]:
+            pname = g.person.name if g.person else "?"
+            lines.append(f"  💡 {g.title} → {pname}")
 
     lines.append("")
 

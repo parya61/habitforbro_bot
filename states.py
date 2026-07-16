@@ -142,5 +142,12 @@ class CafeFlow(StatesGroup):
     visit_dish = State()     # что заказал
 
 
+class GiftFlow(StatesGroup):
+    person_name = State()    # имя человека
+    person_bday = State()    # дата рождения
+    gift_title = State()     # название подарка
+    gift_price = State()     # примерная цена
+
+
 class AnalyticsFlow(StatesGroup):
     chat = State()         # диалог с AI-аналитиком
