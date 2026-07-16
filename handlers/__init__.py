@@ -4,6 +4,7 @@ from aiogram import Router
 from handlers import (
     admin,
     analytics,
+    cafe,
     diary,
     fallback,
     finance,
@@ -38,6 +39,7 @@ def get_routers() -> list[Router]:
         analytics.router,
         finance.router,
         grocery.router,
+        cafe.router,
         settings.router,
         fallback.router,
     ]

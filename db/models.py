@@ -244,6 +244,40 @@ class AnalyticsSession(Base):
     user: Mapped["User"] = relationship()
 
 
+class CafePlace(Base):
+    __tablename__ = "cafe_places"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    address: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    cuisine: Mapped[str | None] = mapped_column(String(64), nullable=True)
+    price_level: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    is_wishlist: Mapped[bool] = mapped_column(Boolean, default=False)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship()
+    visits: Mapped[list["CafeVisit"]] = relationship(back_populates="cafe", cascade="all, delete-orphan")
+
+
+class CafeVisit(Base):
+    __tablename__ = "cafe_visits"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    cafe_id: Mapped[int] = mapped_column(ForeignKey("cafe_places.id"), index=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    visit_date: Mapped[date] = mapped_column(Date, index=True)
+    rating: Mapped[int | None] = mapped_column(Integer, nullable=True)
+    spent: Mapped[float | None] = mapped_column(Float, nullable=True)
+    dish: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship()
+    cafe: Mapped["CafePlace"] = relationship(back_populates="visits")
+
+
 class GroceryItem(Base):
     __tablename__ = "grocery_items"
 

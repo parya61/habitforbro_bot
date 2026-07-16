@@ -134,5 +134,13 @@ class GroceryFlow(StatesGroup):
     add_name = State()       # название продукта
 
 
+class CafeFlow(StatesGroup):
+    add_name = State()       # название кафе
+    add_address = State()    # адрес (опционально)
+    visit_rating = State()   # оценка визита
+    visit_spent = State()    # сколько потратил
+    visit_dish = State()     # что заказал
+
+
 class AnalyticsFlow(StatesGroup):
     chat = State()         # диалог с AI-аналитиком

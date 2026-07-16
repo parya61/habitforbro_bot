@@ -126,6 +126,9 @@ async def build_user_context(session: AsyncSession, user: User) -> str:
     # Чай
     await _append_tea_context(session, user, lines)
 
+    # Кафе
+    await _append_cafe_context(session, user, lines)
+
     return "\n".join(lines)
 
 
@@ -296,6 +299,41 @@ async def _append_tea_context(
         for tw in teaware[:5]:
             vol = f" {tw.volume_ml}мл" if tw.volume_ml else ""
             lines.append(f"  🫖 {tw.name}{vol}")
+
+    lines.append("")
+
+
+async def _append_cafe_context(
+    session: AsyncSession, user: User, lines: list[str]
+) -> None:
+    from db.cafe_queries import count_cafes, list_visits, top_cafes
+    from services.finance import fmt_money
+
+    total = await count_cafes(session, user.id)
+    if total == 0:
+        return
+
+    lines.append("== КАФЕ ==")
+    lines.append(f"Всего мест: {total}")
+
+    top = await top_cafes(session, user.id, limit=5)
+    if top:
+        lines.append("Топ кафе:")
+        for cafe, visits, avg_r, avg_s in top:
+            r = f" ⭐{avg_r:.1f}" if avg_r else ""
+            s = f" ~{fmt_money(avg_s)}" if avg_s else ""
+            lines.append(f"  ☕ {cafe.name}{r}{s} — {visits} виз.")
+
+    visits = await list_visits(session, user.id, limit=7)
+    if visits:
+        lines.append("Последние визиты:")
+        for v in visits:
+            d = v.visit_date.strftime("%d.%m")
+            name = v.cafe.name if v.cafe else "?"
+            r = f" ⭐{v.rating}" if v.rating else ""
+            s = f" {fmt_money(v.spent)}" if v.spent else ""
+            dish = f" — {v.dish}" if v.dish else ""
+            lines.append(f"  {d} ☕ {name}{r}{s}{dish}")
 
     lines.append("")
 
