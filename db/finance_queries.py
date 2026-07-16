@@ -140,6 +140,50 @@ async def list_transactions(
     return list(res.scalars().all())
 
 
+# ---------- Bulk import ----------
+
+async def check_duplicate(
+    session: AsyncSession,
+    user_id: int,
+    tx_date: "date",
+    amount: float,
+    merchant: str | None,
+    tx_type: str,
+) -> bool:
+    stmt = select(func.count()).select_from(FinTransaction).where(
+        FinTransaction.user_id == user_id,
+        FinTransaction.tx_date == tx_date,
+        FinTransaction.amount == amount,
+        FinTransaction.tx_type == tx_type,
+    )
+    if merchant:
+        stmt = stmt.where(FinTransaction.merchant == merchant)
+    cnt = await session.scalar(stmt)
+    return (cnt or 0) > 0
+
+
+async def bulk_add_transactions(
+    session: AsyncSession, txs: list[FinTransaction]
+) -> int:
+    for tx in txs:
+        session.add(tx)
+    await session.commit()
+    return len(txs)
+
+
+async def get_category_by_name(
+    session: AsyncSession, user_id: int, name: str, cat_type: str
+) -> "FinCategory | None":
+    res = await session.execute(
+        select(FinCategory).where(
+            FinCategory.user_id == user_id,
+            FinCategory.name == name,
+            FinCategory.cat_type == cat_type,
+        )
+    )
+    return res.scalar_one_or_none()
+
+
 # ---------- Агрегации ----------
 
 async def monthly_totals(

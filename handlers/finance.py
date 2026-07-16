@@ -28,12 +28,13 @@ def _finance_menu_kb() -> InlineKeyboardBuilder:
     kb.button(text="➕ Доход", callback_data="fin:inc")
     kb.button(text="📊 Сводка", callback_data="fin:sum")
     kb.button(text="📜 История", callback_data="fin:his:0")
+    kb.button(text="📥 Импорт", callback_data="fin:import")
     kb.button(text="🛒 Продукты", callback_data="groc:menu")
     kb.button(text="☕ Кафе", callback_data="cafe:menu")
     kb.button(text="🎁 Подарки", callback_data="gift:menu")
     kb.button(text="✈️ Поездки", callback_data="trip:menu")
     kb.button(text="🏠 Меню", callback_data="go:menu")
-    kb.adjust(2, 2, 2, 2, 1)
+    kb.adjust(2, 2, 1, 2, 2, 1)
     return kb
 
 
@@ -291,6 +292,156 @@ async def _save_transaction(
         f"✅ Записано: {sign}{fmt_money(amount)} — {cat_icon} {esc(cat_name)}{desc}"
     )
     await _show_finance_menu(target, session, user)
+
+
+# ---- Импорт PDF/CSV из Т-Банка ----
+
+@router.callback_query(F.data == "fin:import")
+async def start_import(
+    callback: CallbackQuery, user: User, state: FSMContext
+) -> None:
+    if not _is_admin(user):
+        await callback.answer("Недоступно", show_alert=True)
+        return
+    await callback.answer()
+    await state.set_state(FinanceFlow.csv_upload)
+    kb = InlineKeyboardBuilder()
+    kb.button(text="❌ Отмена", callback_data="fin:menu")
+    await callback.message.answer(
+        "📥 <b>Импорт из Т-Банка</b>\n\n"
+        "Отправь PDF-выписку или CSV-файл.\n\n"
+        "Т-Банк → Главная → Счёт → Выписка → Скачать PDF",
+        reply_markup=kb.as_markup(),
+    )
+
+
+@router.message(FinanceFlow.csv_upload, F.document)
+async def process_import_file(
+    message: Message, session: AsyncSession, user: User, state: FSMContext
+) -> None:
+    doc = message.document
+    fname = (doc.file_name or "").lower()
+
+    if not (fname.endswith(".pdf") or fname.endswith(".csv")):
+        await message.answer(
+            "Пришли файл в формате PDF или CSV.\n"
+            "Другие форматы не поддерживаются."
+        )
+        return
+
+    if doc.file_size and doc.file_size > 10 * 1024 * 1024:
+        await message.answer("Файл слишком большой (макс 10 МБ).")
+        return
+
+    status_msg = await message.answer("⏳ Скачиваю и разбираю файл…")
+
+    from aiogram import Bot
+
+    bot: Bot = message.bot
+    file = await bot.download(doc)
+    raw = file.read()
+
+    from services.csv_import import (
+        ImportResult,
+        format_import_summary,
+        parse_tbank_csv,
+        parse_tbank_pdf,
+    )
+
+    if fname.endswith(".pdf"):
+        rows, parse_errors = parse_tbank_pdf(raw)
+    else:
+        rows, parse_errors = parse_tbank_csv(raw)
+
+    if parse_errors and not rows:
+        await state.clear()
+        error_text = "\n".join(parse_errors[:5])
+        await status_msg.edit_text(
+            f"❌ <b>Не удалось разобрать файл</b>\n\n{error_text}",
+            reply_markup=_back_finance_kb().as_markup(),
+        )
+        return
+
+    if not rows:
+        await state.clear()
+        await status_msg.edit_text(
+            "📭 В файле не найдено операций.",
+            reply_markup=_back_finance_kb().as_markup(),
+        )
+        return
+
+    from db.finance_queries import (
+        check_duplicate,
+        get_category_by_name,
+        match_merchant,
+    )
+    from db.models import FinTransaction
+    from services.finance import ensure_seeded
+
+    await ensure_seeded(session, user.id)
+
+    result = ImportResult()
+    cat_cache: dict[tuple[str, str], int | None] = {}
+    to_add: list[FinTransaction] = []
+
+    for row in rows:
+        is_dup = await check_duplicate(
+            session, user.id, row.tx_date, row.amount, row.merchant, row.tx_type
+        )
+        if is_dup:
+            result.skipped_dup += 1
+            continue
+
+        cache_key = (row.our_category, row.tx_type)
+        if cache_key not in cat_cache:
+            cat = await get_category_by_name(
+                session, user.id, row.our_category, row.tx_type
+            )
+            cat_cache[cache_key] = cat.id if cat else None
+
+        category_id = cat_cache[cache_key]
+
+        if category_id is None:
+            merchant_cat = await match_merchant(session, user.id, row.merchant)
+            if merchant_cat:
+                category_id = merchant_cat.id
+
+        tx = FinTransaction(
+            user_id=user.id,
+            amount=row.amount,
+            tx_type=row.tx_type,
+            category_id=category_id,
+            merchant=row.merchant or None,
+            account="debit",
+            tx_date=row.tx_date,
+        )
+        to_add.append(tx)
+
+        cat_label = row.our_category
+        result.cat_summary[cat_label] = result.cat_summary.get(cat_label, 0) + 1
+
+        if result.date_min is None or row.tx_date < result.date_min:
+            result.date_min = row.tx_date
+        if result.date_max is None or row.tx_date > result.date_max:
+            result.date_max = row.tx_date
+
+    if to_add:
+        from db.finance_queries import bulk_add_transactions
+        await bulk_add_transactions(session, to_add)
+
+    result.imported = len(to_add)
+    result.errors = len(parse_errors)
+
+    await state.clear()
+    summary = format_import_summary(result)
+    await status_msg.edit_text(summary, reply_markup=_back_finance_kb().as_markup())
+
+
+@router.message(FinanceFlow.csv_upload)
+async def import_not_document(message: Message) -> None:
+    await message.answer(
+        "Отправь PDF или CSV файл как документ (скрепка 📎)."
+    )
 
 
 # ---- Сводка за месяц ----

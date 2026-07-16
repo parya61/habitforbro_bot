@@ -128,6 +128,7 @@ class TeaMessageFlow(StatesGroup):
 class FinanceFlow(StatesGroup):
     expense_input = State()  # ввод расхода: "1500 Пятёрочка"
     income_input = State()   # ввод дохода: "113500"
+    csv_upload = State()     # ожидание CSV-файла из Т-Банка
 
 
 class GroceryFlow(StatesGroup):
