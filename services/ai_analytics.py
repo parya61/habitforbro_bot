@@ -10,11 +10,15 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from db.models import User
 from db.queries import (
+    get_tea_profile,
     list_habits,
     list_diary_entries,
     list_goals,
     list_achieved_goals,
+    list_tea_collection,
     list_tea_sessions,
+    list_teaware_items,
+    count_tea_sessions,
 )
 from services.stats import user_stats
 from services.streaks import current_streak, best_streak
@@ -25,10 +29,10 @@ logger = logging.getLogger(__name__)
 DEEPSEEK_API_URL = "https://api.deepseek.com/v1/chat/completions"
 DEEPSEEK_MODEL = "deepseek-chat"
 
-SYSTEM_PROMPT = """Ты — личный аналитик привычек и финансов в боте «Дневник привычек».
+SYSTEM_PROMPT = """Ты — личный аналитик привычек, финансов и чая в боте «Дневник привычек».
 Тебя зовут Керя. Ты спокойный, прямой и по-доброму честный. Говоришь на «ты», просто и тепло.
 
-Тебе дан полный контекст пользователя: привычки, серии, дневник, цели, статистика, финансы.
+Тебе дан полный контекст пользователя: привычки, серии, дневник, цели, статистика, финансы, продукты, чай.
 Твоя задача — помочь человеку стать дисциплинированнее, ближе к целям и финансово осознаннее.
 
 Правила:
@@ -38,6 +42,7 @@ SYSTEM_PROMPT = """Ты — личный аналитик привычек и ф
 - Давай конкретные, применимые советы с цифрами — не абстрактные мотивашки.
 - Не читай нравоучений. Не стыди. Не льсти. Не морализируй по поводу трат.
 - Если видишь аномалию в расходах — скажи прямо: «кафе +40% к среднему» с конкретикой.
+- Чай: уважай чайную культуру. Замечай паттерны (какие виды чаще, как меняются оценки, расход коллекции). Не упрощай тему.
 - Отвечай коротко (до 1500 символов). Не лей воду.
 - Помни: ты видишь только данные этого конкретного пользователя.
 - Общайся по-русски."""
@@ -118,6 +123,9 @@ async def build_user_context(session: AsyncSession, user: User) -> str:
     # Продукты
     await _append_grocery_context(session, user, today, lines)
 
+    # Чай
+    await _append_tea_context(session, user, lines)
+
     return "\n".join(lines)
 
 
@@ -197,6 +205,97 @@ async def _append_finance_context(
             cat_name = tx.category.name if tx.category else "?"
             desc = tx.merchant or cat_name
             lines.append(f"  {d} {s}{fmt_money(tx.amount)} {desc} ({cat_name})")
+
+    lines.append("")
+
+
+async def _append_tea_context(
+    session: AsyncSession, user: User, lines: list[str]
+) -> None:
+    total = await count_tea_sessions(session, user.id)
+    if total == 0:
+        return
+
+    from handlers.tea import TEA_TYPES, TEA_TYPE_EMOJI, CHA_QI_OPTIONS
+
+    lines.append("== ЧАЙ ==")
+
+    profile = await get_tea_profile(session, user.id)
+    if profile:
+        if profile.tea_story:
+            lines.append(f"Путь к чаю: {profile.tea_story[:200]}")
+        if profile.favorite_types:
+            fav = [TEA_TYPES.get(t, t) for t in profile.favorite_types.split(",") if t]
+            lines.append(f"Любимые виды: {', '.join(fav)}")
+        if profile.taste_preferences:
+            lines.append(f"Вкусовые предпочтения: {profile.taste_preferences}")
+
+    lines.append(f"Всего чаепитий: {total}")
+
+    sessions = await list_tea_sessions(session, user.id, limit=15)
+    if sessions:
+        type_counts: dict[str, int] = {}
+        rating_sum = 0
+        rating_count = 0
+        tags_count: dict[str, int] = {}
+        qi_count: dict[str, int] = {}
+
+        for s in sessions:
+            t = TEA_TYPES.get(s.tea_type, s.tea_type)
+            type_counts[t] = type_counts.get(t, 0) + 1
+            if s.rating:
+                rating_sum += s.rating
+                rating_count += 1
+            if s.taste_tags:
+                for tag in s.taste_tags.split(","):
+                    tag = tag.strip()
+                    if tag:
+                        tags_count[tag] = tags_count.get(tag, 0) + 1
+            if s.cha_qi and s.cha_qi != "none":
+                qi_label = CHA_QI_OPTIONS.get(s.cha_qi, s.cha_qi)
+                qi_count[qi_label] = qi_count.get(qi_label, 0) + 1
+
+        if rating_count:
+            avg = rating_sum / rating_count
+            lines.append(f"Средняя оценка (последние): {avg:.1f}/10")
+
+        top_types = sorted(type_counts.items(), key=lambda x: -x[1])[:5]
+        lines.append("По видам (последние): " + ", ".join(f"{t} ({c})" for t, c in top_types))
+
+        if tags_count:
+            top_tags = sorted(tags_count.items(), key=lambda x: -x[1])[:6]
+            lines.append("Частые вкусы: " + ", ".join(f"{t} ({c})" for t, c in top_tags))
+
+        if qi_count:
+            qi_top = sorted(qi_count.items(), key=lambda x: -x[1])[:3]
+            lines.append("Ча ци: " + ", ".join(f"{q} ({c})" for q, c in qi_top))
+
+        lines.append("Последние сессии:")
+        for s in sessions[:7]:
+            d = s.session_date.strftime("%d.%m")
+            emoji = TEA_TYPE_EMOJI.get(s.tea_type, "🍵")
+            t = TEA_TYPES.get(s.tea_type, s.tea_type)
+            r = f" [{s.rating}/10]" if s.rating else ""
+            tags = ""
+            if s.taste_tags:
+                tags = f" ({s.taste_tags[:60]})"
+            lines.append(f"  {d} {emoji} {s.tea_name} ({t}){r}{tags}")
+
+    collection = await list_tea_collection(session, user.id)
+    if collection:
+        lines.append(f"Коллекция: {len(collection)} чаёв")
+        for item in collection[:8]:
+            t = TEA_TYPES.get(item.tea_type, item.tea_type)
+            w = f" {item.remaining_grams}г" if item.remaining_grams else ""
+            v = f" ({item.vendor})" if item.vendor else ""
+            lines.append(f"  🍵 {item.tea_name} ({t}){w}{v}")
+
+    teaware = await list_teaware_items(session, user.id)
+    if teaware:
+        lines.append(f"Посуда: {len(teaware)} предметов")
+        for tw in teaware[:5]:
+            vol = f" {tw.volume_ml}мл" if tw.volume_ml else ""
+            lines.append(f"  🫖 {tw.name}{vol}")
 
     lines.append("")
 
