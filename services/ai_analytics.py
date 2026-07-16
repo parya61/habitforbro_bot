@@ -43,6 +43,7 @@ SYSTEM_PROMPT = """Ты — личный аналитик привычек, фи
 - Не читай нравоучений. Не стыди. Не льсти. Не морализируй по поводу трат.
 - Если видишь аномалию в расходах — скажи прямо: «кафе +40% к среднему» с конкретикой.
 - Чай: уважай чайную культуру. Замечай паттерны (какие виды чаще, как меняются оценки, расход коллекции). Не упрощай тему.
+- Фиды: тебе доступен собранный контент из Telegram-каналов и YouTube-видео (с транскриптами). Используй эту информацию если пользователь спрашивает о чём-то что может быть в его подписках. Суммируй, анализируй, находи полезное.
 - Отвечай коротко (до 1500 символов). Не лей воду.
 - Помни: ты видишь только данные этого конкретного пользователя.
 - Общайся по-русски."""
@@ -134,6 +135,9 @@ async def build_user_context(session: AsyncSession, user: User) -> str:
 
     # Поездки
     await _append_trip_context(session, user, lines)
+
+    # Фиды (Telegram-каналы, YouTube)
+    await _append_feed_context(session, user, lines)
 
     return "\n".join(lines)
 
@@ -484,3 +488,40 @@ async def ask_deepseek(
     except Exception as e:
         logger.exception("DeepSeek request failed")
         return AiResponse(text="", ok=False, error=str(e))
+
+
+async def _append_feed_context(
+    session: AsyncSession, user: User, lines: list[str]
+) -> None:
+    from db.feed_queries import list_sources, recent_items
+
+    sources = await list_sources(session, user.id)
+    if not sources:
+        return
+
+    lines.append("\n== СОБРАННЫЙ КОНТЕНТ (Telegram/YouTube) ==")
+
+    tg_src = [s for s in sources if s.source_type == "telegram"]
+    yt_src = [s for s in sources if s.source_type == "youtube"]
+    lines.append(f"Источников: {len(tg_src)} Telegram, {len(yt_src)} YouTube")
+    lines.append("Каналы: " + ", ".join(s.title for s in sources))
+
+    items = await recent_items(session, user.id, limit=15)
+    if not items:
+        lines.append("Пока нет собранного контента.")
+        return
+
+    lines.append(f"\nПоследние {len(items)} записей:")
+    for item in items:
+        src_name = item.source.title if item.source else "?"
+        date_str = item.published_at.strftime("%d.%m") if item.published_at else ""
+        icon = "TG" if item.item_type == "post" else "YT"
+
+        title = (item.title or "")[:100]
+        lines.append(f"\n[{icon}] {date_str} | {src_name} | {title}")
+
+        text = item.text or ""
+        if len(text) > 800:
+            text = text[:800] + "..."
+        if text:
+            lines.append(text)

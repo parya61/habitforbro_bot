@@ -157,5 +157,10 @@ class TripFlow(StatesGroup):
     add_item = State()       # добавить пункт
 
 
+class FeedFlow(StatesGroup):
+    add_tg = State()       # ввод username Telegram-канала
+    add_yt = State()       # ввод YouTube channel ID или URL
+
+
 class AnalyticsFlow(StatesGroup):
     chat = State()         # диалог с AI-аналитиком

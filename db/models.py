@@ -434,3 +434,35 @@ class TeaSession(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user: Mapped["User"] = relationship()
+
+
+class FeedSource(Base):
+    __tablename__ = "feed_sources"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    source_type: Mapped[str] = mapped_column(String(16))  # telegram / youtube
+    source_id: Mapped[str] = mapped_column(String(128))
+    title: Mapped[str] = mapped_column(String(256))
+    active: Mapped[bool] = mapped_column(Boolean, default=True)
+    last_checked: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship()
+    items: Mapped[list["FeedItem"]] = relationship(back_populates="source")
+
+
+class FeedItem(Base):
+    __tablename__ = "feed_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    source_id: Mapped[int] = mapped_column(ForeignKey("feed_sources.id"), index=True)
+    item_type: Mapped[str] = mapped_column(String(16))    # post / video
+    external_id: Mapped[str] = mapped_column(String(128))
+    title: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    text: Mapped[str | None] = mapped_column(Text, nullable=True)
+    url: Mapped[str | None] = mapped_column(String(512), nullable=True)
+    published_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+    fetched_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    source: Mapped["FeedSource"] = relationship(back_populates="items")

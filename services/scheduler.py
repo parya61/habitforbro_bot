@@ -79,6 +79,10 @@ async def setup_scheduler(bot: Bot) -> None:
         _gift_reminder_check,
         CronTrigger(hour=10, minute=0, timezone=base_tz),
     )
+    _scheduler.add_job(
+        _feed_check,
+        CronTrigger(hour="*/3", minute=30, timezone=base_tz),
+    )
 
     async with get_session() as session:
         for user in await list_users(session):
@@ -403,6 +407,22 @@ async def _friday_shopping_reminder() -> None:
             f"🛒 <b>Пятница! Пора составить список покупок</b>\n\n{text}"
             f"\nОткрой /finance → Продукты, чтобы отметить купленное.",
         )
+
+
+async def _feed_check() -> None:
+    async with get_session() as session:
+        user = await get_user_by_tg(session, config.admin_id)
+        if not user:
+            return
+        from services.feed_aggregator import run_feed_check
+        try:
+            results = await run_feed_check(session, user.id)
+            total = sum(results.values())
+            if total:
+                logger.info("FEED | Collected %d new items (tg=%d, yt=%d)",
+                            total, results.get("telegram", 0), results.get("youtube", 0))
+        except Exception as exc:
+            logger.error("FEED | Check failed: %s", exc)
 
 
 async def _safe_send(chat_id: int, text: str, markup=None) -> None:
