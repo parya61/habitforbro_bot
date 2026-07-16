@@ -17,7 +17,7 @@ log = logging.getLogger(__name__)
 
 YT_RSS = "https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
 YT_VIDEO_URL = "https://www.youtube.com/watch?v={video_id}"
-_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
+_UA = "Mozilla/5.0"
 
 _YT_ID_RE = re.compile(
     r"(?:youtube\.com/(?:channel/|@)|youtube\.com/feeds/videos\.xml\?channel_id=)"
