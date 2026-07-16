@@ -17,6 +17,7 @@ log = logging.getLogger(__name__)
 
 YT_RSS = "https://www.youtube.com/feeds/videos.xml?channel_id={channel_id}"
 YT_VIDEO_URL = "https://www.youtube.com/watch?v={video_id}"
+_UA = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36"
 
 _YT_ID_RE = re.compile(
     r"(?:youtube\.com/(?:channel/|@)|youtube\.com/feeds/videos\.xml\?channel_id=)"
@@ -33,8 +34,17 @@ def extract_channel_id(url_or_id: str) -> str | None:
 
 
 def fetch_rss(channel_id: str, max_items: int = 10) -> list[dict]:
+    import urllib.request
+
     url = YT_RSS.format(channel_id=channel_id)
-    feed = feedparser.parse(url)
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": _UA})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            xml_data = resp.read()
+        feed = feedparser.parse(xml_data)
+    except Exception as exc:
+        log.warning("RSS fetch failed for %s: %s", channel_id, exc)
+        return []
 
     results = []
     for entry in feed.entries[:max_items]:
@@ -76,6 +86,14 @@ def get_transcript(video_id: str, langs: tuple[str, ...] = ("ru", "en")) -> str 
 
 
 def fetch_channel_title(channel_id: str) -> str:
+    import urllib.request
+
     url = YT_RSS.format(channel_id=channel_id)
-    feed = feedparser.parse(url)
-    return feed.feed.get("title", channel_id)
+    try:
+        req = urllib.request.Request(url, headers={"User-Agent": _UA})
+        with urllib.request.urlopen(req, timeout=15) as resp:
+            xml_data = resp.read()
+        feed = feedparser.parse(xml_data)
+        return feed.feed.get("title", channel_id)
+    except Exception:
+        return channel_id
