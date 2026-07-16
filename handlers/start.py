@@ -129,6 +129,9 @@ async def _dispatch(dest: str, msg: Message, session: AsyncSession, user: User) 
     elif dest == "finance":
         from handlers.finance import cmd_finance
         await cmd_finance(msg, session, user)
+    elif dest == "tea":
+        from handlers.tea import cmd_tea
+        await cmd_tea(msg, user)
     elif dest == "settings":
         from handlers.settings import cmd_settings
         await cmd_settings(msg, user)

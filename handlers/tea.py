@@ -53,9 +53,16 @@ from states import (
     TeawareEditFlow,
     TeawareFlow,
 )
+from config import config
 from utils import display_name, esc, user_today
 
 router = Router()
+
+ADMIN_TG_ID = config.admin_id
+
+
+def _is_admin(user: User) -> bool:
+    return user.telegram_id == ADMIN_TG_ID
 
 # -- Константы --
 
@@ -267,6 +274,9 @@ def _type_label(code: str) -> str:
 @router.message(Command("tea"))
 @router.message(F.text == "🍵 Чай")
 async def cmd_tea(message: Message, user: User) -> None:
+    if not _is_admin(user):
+        await message.answer("Этот раздел недоступен.", reply_markup=home_kb())
+        return
     await show_tea_menu(message, user)
 
 
