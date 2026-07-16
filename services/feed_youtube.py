@@ -4,8 +4,11 @@ from __future__ import annotations
 import json
 import logging
 import re
+import shutil
 import subprocess
+import sys
 from datetime import datetime
+from pathlib import Path
 
 import feedparser
 from youtube_transcript_api import YouTubeTranscriptApi
@@ -87,11 +90,20 @@ def get_transcript(video_id: str, langs: tuple[str, ...] = ("ru", "en")) -> str 
         return None
 
 
+def _find_ytdlp() -> str:
+    venv_bin = Path(sys.executable).parent / "yt-dlp"
+    if venv_bin.exists():
+        return str(venv_bin)
+    found = shutil.which("yt-dlp")
+    return found or "yt-dlp"
+
+
 def fetch_via_ytdlp(channel_id: str, max_items: int = 5) -> list[dict]:
     """Fallback: list recent videos via yt-dlp when RSS returns nothing."""
     url = f"https://www.youtube.com/channel/{channel_id}/videos"
+    ytdlp = _find_ytdlp()
     cmd = [
-        "yt-dlp", "--dump-json", "--flat-playlist",
+        ytdlp, "--dump-json", "--flat-playlist",
         "--playlist-items", f"1-{max_items}",
         "--no-warnings", "--quiet",
         url,
