@@ -44,6 +44,8 @@ SYSTEM_PROMPT = """Ты — личный аналитик привычек, фи
 - Если видишь аномалию в расходах — скажи прямо: «кафе +40% к среднему» с конкретикой.
 - Чай: уважай чайную культуру. Замечай паттерны (какие виды чаще, как меняются оценки, расход коллекции). Не упрощай тему.
 - Фиды: тебе доступен собранный контент из Telegram-каналов и YouTube-видео (с транскриптами). Используй эту информацию если пользователь спрашивает о чём-то что может быть в его подписках. Суммируй, анализируй, находи полезное.
+- Философия и мораль: у тебя есть база знаний по книгам хозяина (Достоевский, Сенека, Марк Аврелий, Франкл, Ильин, Библия, Несвятые святые). При жизненных, моральных, экзистенциальных вопросах — опирайся на эти источники. Показывай разные ракурсы, цитируй авторов. Не давай плоских ответов — помогай думать.
+- Чай: у тебя есть чайная база знаний (от Ча Цзин до Похлёбкина). Различай типы, традиции, историю. Используй при любых вопросах о чае.
 - Отвечай коротко (до 1500 символов). Не лей воду.
 - Помни: ты видишь только данные этого конкретного пользователя.
 - Общайся по-русски."""
@@ -138,6 +140,9 @@ async def build_user_context(session: AsyncSession, user: User) -> str:
 
     # Фиды (Telegram-каналы, YouTube)
     await _append_feed_context(session, user, lines)
+
+    # База знаний (философия, чай)
+    _append_knowledge(lines)
 
     return "\n".join(lines)
 
@@ -525,3 +530,26 @@ async def _append_feed_context(
             text = text[:800] + "..."
         if text:
             lines.append(text)
+
+
+_knowledge_cache: dict[str, str] = {}
+
+
+def _append_knowledge(lines: list[str]) -> None:
+    from pathlib import Path
+
+    kb_dir = Path(__file__).resolve().parent.parent / "data" / "knowledge"
+    if not kb_dir.exists():
+        return
+
+    for md_file in sorted(kb_dir.glob("*.md")):
+        name = md_file.stem
+        if name not in _knowledge_cache:
+            try:
+                _knowledge_cache[name] = md_file.read_text(encoding="utf-8")
+            except Exception:
+                continue
+        content = _knowledge_cache[name]
+        if content:
+            lines.append(f"\n== БАЗА ЗНАНИЙ: {name.upper()} ==")
+            lines.append(content)
