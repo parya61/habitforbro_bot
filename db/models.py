@@ -449,7 +449,7 @@ class FeedSource(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
     user: Mapped["User"] = relationship()
-    items: Mapped[list["FeedItem"]] = relationship(back_populates="source")
+    items: Mapped[list["FeedItem"]] = relationship(back_populates="source", cascade="all, delete-orphan")
 
 
 class FeedItem(Base):
