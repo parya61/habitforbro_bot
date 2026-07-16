@@ -1,0 +1,1338 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>sovanisova — кинематографичные рекламные видео</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="Кинематографичные рекламные ролики для брендов. Реальная съёмка, AI-интеграция, полный продакшен-цикл.">
+<meta property="og:title" content="sovanisova — кинематографичные рекламные видео">
+<meta property="og:description" content="Истории, которые невозможно пролистать. Реальная съёмка + AI.">
+<meta property="og:type" content="website">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant:ital,wght@0,300;0,400;0,500;0,600;1,300;1,400&family=Inter:wght@300;400;500&display=swap" rel="stylesheet">
+
+<style>
+:root {
+  --bg: #08080c;
+  --bg-elevated: #0f0f15;
+  --surface: rgba(255,255,255,0.03);
+  --glass: rgba(255,255,255,0.04);
+  --glass-border: rgba(255,255,255,0.08);
+  --text: #f0ece4;
+  --text-muted: rgba(240,236,228,0.5);
+  --accent: #c9a87c;
+  --accent-dim: rgba(201,168,124,0.15);
+  --accent-glow: rgba(201,168,124,0.3);
+  --teal: #4ecdc4;
+  --teal-dim: rgba(78,205,196,0.1);
+  --violet: #7c6cf0;
+  --font-display: 'Cormorant', 'Georgia', serif;
+  --font-body: 'Inter', system-ui, -apple-system, sans-serif;
+  --container: 1200px;
+  --pad: clamp(20px, 5vw, 48px);
+}
+
+*, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
+
+html {
+  scroll-behavior: smooth;
+  scrollbar-width: thin;
+  scrollbar-color: var(--accent) var(--bg);
+}
+
+::-webkit-scrollbar { width: 4px; }
+::-webkit-scrollbar-track { background: var(--bg); }
+::-webkit-scrollbar-thumb { background: var(--accent); border-radius: 2px; }
+
+body {
+  font-family: var(--font-body);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+  overflow-x: hidden;
+  cursor: none;
+}
+
+a { color: inherit; text-decoration: none; cursor: none; }
+button { border: none; background: none; color: inherit; cursor: none; font: inherit; }
+img, video { display: block; max-width: 100%; }
+
+/* Custom Cursor */
+.cursor {
+  position: fixed;
+  width: 16px;
+  height: 16px;
+  border: 1.5px solid var(--accent);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 9999;
+  transition: transform 0.15s ease, opacity 0.2s;
+  transform: translate(-50%, -50%);
+  mix-blend-mode: difference;
+}
+
+.cursor-glow {
+  position: fixed;
+  width: 300px;
+  height: 300px;
+  background: radial-gradient(circle, rgba(201,168,124,0.06) 0%, transparent 70%);
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 1;
+  transform: translate(-50%, -50%);
+  transition: opacity 0.4s;
+}
+
+.cursor.hover {
+  transform: translate(-50%, -50%) scale(2.5);
+  background: rgba(201,168,124,0.1);
+  border-color: var(--teal);
+}
+
+/* Film Grain Overlay */
+.grain {
+  position: fixed;
+  inset: 0;
+  z-index: 9000;
+  pointer-events: none;
+  opacity: 0.035;
+  background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='noise'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23noise)'/%3E%3C/svg%3E");
+  animation: grainShift 0.5s steps(3) infinite;
+}
+
+@keyframes grainShift {
+  0% { transform: translate(0, 0); }
+  33% { transform: translate(-2px, 1px); }
+  66% { transform: translate(1px, -1px); }
+  100% { transform: translate(0, 0); }
+}
+
+/* Container */
+.container {
+  max-width: var(--container);
+  margin: 0 auto;
+  padding: 0 var(--pad);
+}
+
+/* Scroll-Driven Animations */
+@keyframes fadeReveal {
+  from { opacity: 0; transform: translateY(40px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleReveal {
+  from { opacity: 0; transform: scale(0.95); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes slideLeft {
+  from { opacity: 0; transform: translateX(-60px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+@keyframes slideRight {
+  from { opacity: 0; transform: translateX(60px); }
+  to { opacity: 1; transform: translateX(0); }
+}
+
+.reveal {
+  animation: fadeReveal linear both;
+  animation-timeline: view();
+  animation-range: entry 0% entry 35%;
+}
+
+.reveal-scale {
+  animation: scaleReveal linear both;
+  animation-timeline: view();
+  animation-range: entry 0% entry 40%;
+}
+
+.reveal-left {
+  animation: slideLeft linear both;
+  animation-timeline: view();
+  animation-range: entry 0% entry 35%;
+}
+
+.reveal-right {
+  animation: slideRight linear both;
+  animation-timeline: view();
+  animation-range: entry 0% entry 35%;
+}
+
+/* Fallback for unsupported browsers */
+@supports not (animation-timeline: view()) {
+  .reveal, .reveal-scale, .reveal-left, .reveal-right {
+    animation: none;
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* ====== Navigation ====== */
+.nav {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  z-index: 100;
+  padding: 32px var(--pad);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nav.scrolled {
+  padding: 18px var(--pad);
+  background: rgba(8, 8, 12, 0.85);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--glass-border);
+}
+
+.nav-logo {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  font-family: var(--font-body);
+  font-size: 0.82rem;
+  font-weight: 400;
+  letter-spacing: 0.2em;
+  text-transform: lowercase;
+}
+
+.nav-logo img {
+  height: 36px;
+  width: auto;
+  filter: brightness(1.1);
+}
+
+.nav-links {
+  display: flex;
+  gap: 40px;
+}
+
+.nav-links a {
+  font-size: 0.72rem;
+  font-weight: 400;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+  transition: color 0.3s;
+  position: relative;
+}
+
+.nav-links a::after {
+  content: '';
+  position: absolute;
+  bottom: -6px;
+  left: 0;
+  width: 0;
+  height: 1px;
+  background: var(--accent);
+  transition: width 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.nav-links a:hover { color: var(--text); }
+.nav-links a:hover::after { width: 100%; }
+
+.nav-toggle {
+  display: none;
+  flex-direction: column;
+  gap: 5px;
+  width: 24px;
+  padding: 4px 0;
+  z-index: 110;
+}
+
+.nav-toggle span {
+  display: block;
+  height: 1px;
+  background: var(--text);
+  transition: transform 0.3s, opacity 0.3s;
+  transform-origin: center;
+}
+
+.nav-toggle.active span:first-child { transform: translateY(3px) rotate(45deg); }
+.nav-toggle.active span:nth-child(2) { opacity: 0; }
+.nav-toggle.active span:last-child { transform: translateY(-3px) rotate(-45deg); }
+
+/* ====== Hero ====== */
+.hero {
+  min-height: 100vh;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  padding: 80px var(--pad);
+}
+
+.hero-bg {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+
+.hero-bg::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse 80% 60% at 50% 40%, rgba(201,168,124,0.06) 0%, transparent 60%),
+              radial-gradient(ellipse 60% 50% at 80% 20%, rgba(78,205,196,0.04) 0%, transparent 50%),
+              radial-gradient(ellipse 50% 40% at 20% 70%, rgba(124,108,240,0.03) 0%, transparent 50%);
+  animation: auroraPulse 12s ease-in-out infinite alternate;
+}
+
+@keyframes auroraPulse {
+  0% { opacity: 1; transform: scale(1); }
+  100% { opacity: 0.7; transform: scale(1.05); }
+}
+
+.hero-video-container {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  overflow: hidden;
+}
+
+.hero-video-container video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  opacity: 0.2;
+  filter: saturate(0.6);
+}
+
+.hero-video-container::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, rgba(8,8,12,0.4) 0%, rgba(8,8,12,0.8) 70%, var(--bg) 100%);
+}
+
+.hero-content {
+  position: relative;
+  z-index: 2;
+  text-align: center;
+  max-width: 900px;
+}
+
+.hero-eyebrow {
+  font-family: var(--font-body);
+  font-size: 0.7rem;
+  font-weight: 400;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 28px;
+  opacity: 0;
+  animation: fadeUp 1s 0.3s both;
+}
+
+.hero-title {
+  font-family: var(--font-display);
+  font-size: clamp(2.8rem, 7vw, 5.5rem);
+  font-weight: 300;
+  line-height: 1.1;
+  letter-spacing: -0.02em;
+  margin-bottom: 28px;
+  opacity: 0;
+  animation: fadeUp 1s 0.5s both;
+}
+
+.hero-title em {
+  font-style: italic;
+  color: var(--accent);
+}
+
+.hero-sub {
+  font-family: var(--font-body);
+  font-size: clamp(0.95rem, 1.5vw, 1.1rem);
+  font-weight: 300;
+  color: var(--text-muted);
+  max-width: 520px;
+  margin: 0 auto 48px;
+  line-height: 1.8;
+  opacity: 0;
+  animation: fadeUp 1s 0.7s both;
+}
+
+.hero-cta {
+  opacity: 0;
+  animation: fadeUp 1s 0.9s both;
+}
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  padding: 18px 44px;
+  font-family: var(--font-body);
+  font-size: 0.72rem;
+  font-weight: 400;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  border: 1px solid var(--accent);
+  color: var(--accent);
+  transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.btn::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--accent);
+  transform: scaleX(0);
+  transform-origin: left;
+  transition: transform 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.btn:hover::before { transform: scaleX(1); }
+.btn:hover { color: var(--bg); }
+.btn span { position: relative; z-index: 1; }
+
+.btn-arrow {
+  position: relative;
+  z-index: 1;
+  width: 16px;
+  height: 16px;
+  transition: transform 0.3s;
+}
+
+.btn:hover .btn-arrow { transform: translateX(4px); }
+
+.hero-scroll {
+  position: absolute;
+  bottom: 40px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+}
+
+.hero-scroll-line {
+  width: 1px;
+  height: 48px;
+  background: linear-gradient(to bottom, var(--accent), transparent);
+  animation: scrollPulse 2.5s ease-in-out infinite;
+}
+
+@keyframes fadeUp {
+  from { opacity: 0; transform: translateY(24px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scrollPulse {
+  0%, 100% { opacity: 0; transform: scaleY(0.4); transform-origin: top; }
+  50% { opacity: 1; transform: scaleY(1); }
+}
+
+/* ====== Section Common ====== */
+.section {
+  padding: clamp(100px, 14vw, 180px) 0;
+  position: relative;
+}
+
+.section-label {
+  font-family: var(--font-body);
+  font-size: 0.65rem;
+  font-weight: 400;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 16px;
+}
+
+.section-title {
+  font-family: var(--font-display);
+  font-size: clamp(2rem, 4.5vw, 3.4rem);
+  font-weight: 300;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin-bottom: 60px;
+}
+
+/* ====== Services ====== */
+.services-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 2px;
+}
+
+.service-card {
+  padding: clamp(36px, 4vw, 56px) clamp(28px, 3vw, 44px);
+  background: var(--glass);
+  border: 1px solid var(--glass-border);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  position: relative;
+  overflow: hidden;
+}
+
+.service-card::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0;
+  transition: opacity 0.5s;
+}
+
+.service-card:hover::before { opacity: 1; }
+
+.service-card:hover {
+  background: rgba(255,255,255,0.06);
+  border-color: rgba(201,168,124,0.2);
+  transform: translateY(-4px);
+}
+
+.service-num {
+  font-family: var(--font-display);
+  font-size: 3rem;
+  font-weight: 300;
+  color: var(--accent-dim);
+  line-height: 1;
+  margin-bottom: 24px;
+  transition: color 0.4s;
+}
+
+.service-card:hover .service-num { color: var(--accent-glow); }
+
+.service-title {
+  font-family: var(--font-display);
+  font-size: clamp(1.4rem, 2vw, 1.8rem);
+  font-weight: 400;
+  margin-bottom: 16px;
+  letter-spacing: 0.01em;
+}
+
+.service-desc {
+  font-size: 0.88rem;
+  color: var(--text-muted);
+  line-height: 1.7;
+  margin-bottom: 24px;
+}
+
+.service-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.service-tag {
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  padding: 6px 14px;
+  border: 1px solid var(--glass-border);
+  color: var(--text-muted);
+  transition: all 0.3s;
+}
+
+.service-card:hover .service-tag {
+  border-color: rgba(201,168,124,0.2);
+  color: var(--text);
+}
+
+/* ====== Portfolio ====== */
+.portfolio-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 3px;
+}
+
+.portfolio-item {
+  position: relative;
+  overflow: hidden;
+  aspect-ratio: 9/16;
+  background: var(--bg-elevated);
+  display: block;
+}
+
+.portfolio-item.wide {
+  grid-column: span 2;
+  aspect-ratio: 16/9;
+}
+
+.portfolio-item video,
+.portfolio-item .portfolio-placeholder {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.8s cubic-bezier(0.4, 0, 0.2, 1), filter 0.6s;
+}
+
+.portfolio-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.portfolio-item:hover video,
+.portfolio-item:hover .portfolio-placeholder {
+  transform: scale(1.05);
+  filter: brightness(1.1);
+}
+
+.portfolio-overlay {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to top, rgba(8,8,12,0.9) 0%, rgba(8,8,12,0.1) 50%, transparent 100%);
+  display: flex;
+  flex-direction: column;
+  justify-content: flex-end;
+  padding: clamp(20px, 3vw, 36px);
+  opacity: 0;
+  transition: opacity 0.5s;
+  z-index: 2;
+}
+
+.portfolio-item:hover .portfolio-overlay { opacity: 1; }
+
+.portfolio-tag {
+  font-size: 0.6rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-bottom: 8px;
+}
+
+.portfolio-name {
+  font-family: var(--font-display);
+  font-size: clamp(1.2rem, 2vw, 1.6rem);
+  font-weight: 400;
+  margin-bottom: 4px;
+}
+
+.portfolio-credits {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.portfolio-play {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%) scale(0.8);
+  width: 56px;
+  height: 56px;
+  border: 1.5px solid rgba(255,255,255,0.6);
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: all 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+  z-index: 3;
+}
+
+.portfolio-item:hover .portfolio-play {
+  opacity: 1;
+  transform: translate(-50%, -50%) scale(1);
+}
+
+/* ====== Included / Production ====== */
+.included-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 2px;
+}
+
+.included-item {
+  padding: 40px 24px;
+  text-align: center;
+  border: 1px solid var(--glass-border);
+  background: var(--glass);
+  transition: all 0.4s;
+}
+
+.included-item:hover {
+  background: rgba(255,255,255,0.05);
+  border-color: rgba(201,168,124,0.15);
+}
+
+.included-icon {
+  width: 32px;
+  height: 32px;
+  margin: 0 auto 18px;
+  color: var(--text-muted);
+  transition: color 0.3s;
+}
+
+.included-item:hover .included-icon { color: var(--accent); }
+
+.included-label {
+  font-size: 0.82rem;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  color: var(--text-muted);
+  transition: color 0.3s;
+}
+
+.included-item:hover .included-label { color: var(--text); }
+
+/* ====== Process ====== */
+.process-steps {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0;
+  position: relative;
+}
+
+.process-steps::before {
+  content: '';
+  position: absolute;
+  top: 24px;
+  left: 12.5%;
+  right: 12.5%;
+  height: 1px;
+  background: linear-gradient(90deg, var(--accent), var(--teal), var(--violet), var(--accent));
+  opacity: 0.3;
+}
+
+.process-step {
+  text-align: center;
+  padding: 0 16px;
+  position: relative;
+}
+
+.process-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--accent);
+  margin: 0 auto 32px;
+  position: relative;
+  z-index: 1;
+  box-shadow: 0 0 20px var(--accent-glow);
+}
+
+.process-step:nth-child(2) .process-dot { background: var(--teal); box-shadow: 0 0 20px rgba(78,205,196,0.3); }
+.process-step:nth-child(3) .process-dot { background: var(--violet); box-shadow: 0 0 20px rgba(124,108,240,0.3); }
+.process-step:nth-child(4) .process-dot { background: var(--accent); }
+
+.process-num {
+  font-family: var(--font-display);
+  font-size: 2.4rem;
+  font-weight: 300;
+  color: rgba(255,255,255,0.06);
+  margin-bottom: 12px;
+}
+
+.process-title {
+  font-family: var(--font-display);
+  font-size: 1.3rem;
+  font-weight: 400;
+  margin-bottom: 10px;
+}
+
+.process-desc {
+  font-size: 0.85rem;
+  color: var(--text-muted);
+  line-height: 1.6;
+}
+
+/* ====== Contact ====== */
+.contact {
+  text-align: center;
+  padding: clamp(120px, 16vw, 200px) 0;
+}
+
+.contact-title {
+  font-family: var(--font-display);
+  font-size: clamp(2.4rem, 5vw, 4rem);
+  font-weight: 300;
+  margin-bottom: 20px;
+  line-height: 1.15;
+}
+
+.contact-sub {
+  font-size: 1rem;
+  color: var(--text-muted);
+  max-width: 480px;
+  margin: 0 auto 48px;
+  line-height: 1.8;
+}
+
+.contact-socials {
+  display: flex;
+  justify-content: center;
+  gap: 36px;
+  margin-bottom: 48px;
+}
+
+.social-link {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 0.82rem;
+  color: var(--text-muted);
+  transition: color 0.3s;
+  letter-spacing: 0.02em;
+}
+
+.social-link:hover { color: var(--accent); }
+.social-link svg { width: 18px; height: 18px; flex-shrink: 0; }
+
+/* ====== Video Modal ====== */
+.modal {
+  position: fixed;
+  inset: 0;
+  z-index: 500;
+  background: rgba(8,8,12,0.95);
+  backdrop-filter: blur(24px);
+  -webkit-backdrop-filter: blur(24px);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  visibility: hidden;
+  transition: all 0.4s;
+  padding: 24px;
+}
+
+.modal.open { opacity: 1; visibility: visible; }
+
+.modal-content {
+  position: relative;
+  width: 100%;
+  max-width: 420px;
+}
+
+.modal-content.horizontal { max-width: 900px; }
+
+.modal-frame {
+  position: relative;
+  width: 100%;
+  padding-bottom: 177.78%;
+  background: #000;
+}
+
+.modal-content.horizontal .modal-frame { padding-bottom: 56.25%; }
+
+.modal-frame iframe {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.modal-close {
+  position: absolute;
+  top: -44px;
+  right: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 1.4rem;
+  transition: color 0.3s;
+}
+
+.modal-close:hover { color: var(--text); }
+
+/* ====== Footer ====== */
+.footer {
+  padding: 40px var(--pad);
+  text-align: center;
+  font-size: 0.68rem;
+  color: var(--text-muted);
+  letter-spacing: 0.06em;
+  border-top: 1px solid var(--glass-border);
+}
+
+/* ====== Responsive ====== */
+@media (max-width: 900px) {
+  .services-grid { grid-template-columns: 1fr; }
+  .portfolio-grid { grid-template-columns: 1fr 1fr; }
+  .portfolio-item.wide { grid-column: span 2; }
+  .included-grid { grid-template-columns: repeat(2, 1fr); }
+  .process-steps { grid-template-columns: repeat(2, 1fr); gap: 32px; }
+  .process-steps::before { display: none; }
+}
+
+@media (max-width: 768px) {
+  .nav-links {
+    position: fixed;
+    inset: 0;
+    background: rgba(8,8,12,0.97);
+    backdrop-filter: blur(24px);
+    -webkit-backdrop-filter: blur(24px);
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 32px;
+    opacity: 0;
+    visibility: hidden;
+    transition: all 0.4s;
+  }
+  .nav-links.open { opacity: 1; visibility: visible; }
+  .nav-links a { font-size: 1rem; color: var(--text); letter-spacing: 0.12em; }
+  .nav-toggle { display: flex; }
+
+  .cursor, .cursor-glow { display: none; }
+  body { cursor: auto; }
+  a, button { cursor: pointer; }
+
+  .portfolio-grid { grid-template-columns: 1fr 1fr; }
+  .portfolio-overlay { opacity: 1; }
+  .portfolio-play { opacity: 1; transform: translate(-50%, -50%) scale(1); }
+}
+
+@media (max-width: 540px) {
+  .portfolio-grid { grid-template-columns: 1fr; }
+  .portfolio-item.wide { grid-column: auto; aspect-ratio: 9/16; }
+  .process-steps { grid-template-columns: 1fr 1fr; }
+  .included-grid { grid-template-columns: 1fr 1fr; }
+  .contact-socials { flex-direction: column; align-items: center; gap: 20px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .reveal, .reveal-scale, .reveal-left, .reveal-right { animation: none; opacity: 1; transform: none; }
+  .hero-eyebrow, .hero-title, .hero-sub, .hero-cta { animation: none; opacity: 1; transform: none; }
+  .grain { animation: none; }
+  .hero-scroll-line { animation: none; opacity: 0.4; }
+  html { scroll-behavior: auto; }
+}
+</style>
+</head>
+<body>
+
+<!-- Grain Overlay -->
+<div class="grain"></div>
+
+<!-- Custom Cursor -->
+<div class="cursor" id="cursor"></div>
+<div class="cursor-glow" id="cursorGlow"></div>
+
+<!-- Navigation -->
+<nav class="nav" id="nav">
+  <a class="nav-logo" href="#">
+    <img src="logo.png?v=3" alt="sovanisova" width="100" height="36">
+  </a>
+  <div class="nav-links" id="navLinks">
+    <a href="#services">Услуги</a>
+    <a href="#portfolio">Портфолио</a>
+    <a href="#process">Процесс</a>
+    <a href="#contact">Связаться</a>
+  </div>
+  <button class="nav-toggle" id="navToggle" aria-label="Меню">
+    <span></span><span></span><span></span>
+  </button>
+</nav>
+
+<!-- Hero -->
+<section class="hero" id="hero">
+  <div class="hero-video-container">
+    <video autoplay muted loop playsinline>
+      <source src="video-reel.mp4?v=3" type="video/mp4">
+    </video>
+  </div>
+  <div class="hero-bg"></div>
+  <div class="hero-content">
+    <p class="hero-eyebrow">Видеопродакшен &middot; AI &middot; Кинематограф</p>
+    <h1 class="hero-title">Истории, которые<br><em>невозможно</em> пролистать</h1>
+    <p class="hero-sub">Кинематографичные рекламные видео для брендов. Реальная съёмка, AI-генерация, полный продакшен.</p>
+    <div class="hero-cta">
+      <a href="#contact" class="btn">
+        <span>Обсудить проект</span>
+        <svg class="btn-arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="8" x2="13" y2="8"/><polyline points="9,4 13,8 9,12"/></svg>
+      </a>
+    </div>
+  </div>
+  <div class="hero-scroll"><div class="hero-scroll-line"></div></div>
+</section>
+
+<!-- Services -->
+<section class="section" id="services">
+  <div class="container">
+    <p class="section-label reveal">Направления</p>
+    <h2 class="section-title reveal">Три формата —<br>один кинематографичный результат</h2>
+    <div class="services-grid">
+
+      <div class="service-card reveal-left">
+        <div class="service-num">01</div>
+        <h3 class="service-title">Реальная съёмка</h3>
+        <p class="service-desc">Продукт в кадре, полный продакшен-цикл от идеи до готового ролика</p>
+        <div class="service-tags">
+          <span class="service-tag">Концепция</span>
+          <span class="service-tag">Локация</span>
+          <span class="service-tag">Съёмка</span>
+          <span class="service-tag">Монтаж</span>
+          <span class="service-tag">Саунд</span>
+        </div>
+      </div>
+
+      <div class="service-card reveal-scale">
+        <div class="service-num">02</div>
+        <h3 class="service-title">Съёмка + AI</h3>
+        <p class="service-desc">Реальные кадры, дополненные AI-эффектами и кинематографичными сценами</p>
+        <div class="service-tags">
+          <span class="service-tag">Живые кадры</span>
+          <span class="service-tag">AI-фоны</span>
+          <span class="service-tag">VFX</span>
+          <span class="service-tag">Ротоскоп</span>
+          <span class="service-tag">Грейдинг</span>
+        </div>
+      </div>
+
+      <div class="service-card reveal-right">
+        <div class="service-num">03</div>
+        <h3 class="service-title">Full AI</h3>
+        <p class="service-desc">Полностью сгенерированные ролики — концепт-видео, тизеры, motion design</p>
+        <div class="service-tags">
+          <span class="service-tag">Генерация</span>
+          <span class="service-tag">Motion</span>
+          <span class="service-tag">Анимация</span>
+          <span class="service-tag">Быстрый запуск</span>
+        </div>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- Portfolio -->
+<section class="section" id="portfolio">
+  <div class="container">
+    <p class="section-label reveal">Портфолио</p>
+    <h2 class="section-title reveal">Избранные работы</h2>
+  </div>
+  <div class="container" style="max-width:1400px">
+    <div class="portfolio-grid">
+
+      <a class="portfolio-item reveal-scale" data-video="https://www.youtube.com/shorts/ylfU4yY9J8s" href="#">
+        <video autoplay muted loop playsinline loading="lazy">
+          <source src="video-ai-demo.mp4?v=3" type="video/mp4">
+        </video>
+        <div class="portfolio-play">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="var(--text)"><polygon points="5,2 13,8 5,14"/></svg>
+        </div>
+        <div class="portfolio-overlay">
+          <span class="portfolio-tag">Hybrid AI</span>
+          <h3 class="portfolio-name">Cosmos Skincare</h3>
+          <p class="portfolio-credits">Концепция &middot; Съёмка &middot; AI &middot; Монтаж</p>
+        </div>
+      </a>
+
+      <a class="portfolio-item reveal-scale" data-video="https://www.youtube.com/shorts/blRlnGpo_PI" href="#">
+        <video autoplay muted loop playsinline loading="lazy">
+          <source src="video-reel.mp4?v=3" type="video/mp4">
+        </video>
+        <div class="portfolio-play">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="var(--text)"><polygon points="5,2 13,8 5,14"/></svg>
+        </div>
+        <div class="portfolio-overlay">
+          <span class="portfolio-tag">Реальная съёмка</span>
+          <h3 class="portfolio-name">Urban Flow</h3>
+          <p class="portfolio-credits">Режиссура &middot; Съёмка &middot; Цветокоррекция</p>
+        </div>
+      </a>
+
+      <a class="portfolio-item reveal-scale" data-video="https://www.youtube.com/shorts/5BK3YN7gXz0" href="#">
+        <div class="portfolio-placeholder" style="background:linear-gradient(135deg, #0f0f15 0%, rgba(124,108,240,0.15) 50%, #0f0f15 100%)"></div>
+        <div class="portfolio-play">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="var(--text)"><polygon points="5,2 13,8 5,14"/></svg>
+        </div>
+        <div class="portfolio-overlay">
+          <span class="portfolio-tag">Full AI</span>
+          <h3 class="portfolio-name">Botanica</h3>
+          <p class="portfolio-credits">Концепция &middot; AI-генерация &middot; Саунд</p>
+        </div>
+      </a>
+
+      <a class="portfolio-item reveal-scale" data-video="https://www.youtube.com/shorts/l4YCuNA76Bk" href="#">
+        <div class="portfolio-placeholder" style="background:linear-gradient(200deg, rgba(78,205,196,0.12) 0%, #0f0f15 60%, rgba(201,168,124,0.08) 100%)"></div>
+        <div class="portfolio-play">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="var(--text)"><polygon points="5,2 13,8 5,14"/></svg>
+        </div>
+        <div class="portfolio-overlay">
+          <span class="portfolio-tag">Full AI</span>
+          <h3 class="portfolio-name">Tech Pulse</h3>
+          <p class="portfolio-credits">Сценарий &middot; AI-генерация &middot; Motion</p>
+        </div>
+      </a>
+
+      <a class="portfolio-item reveal-scale" data-video="https://www.youtube.com/shorts/SUcjZT1P174" href="#">
+        <div class="portfolio-placeholder" style="background:linear-gradient(160deg, rgba(201,168,124,0.1) 0%, #0f0f15 50%, rgba(78,205,196,0.08) 100%)"></div>
+        <div class="portfolio-play">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="var(--text)"><polygon points="5,2 13,8 5,14"/></svg>
+        </div>
+        <div class="portfolio-overlay">
+          <span class="portfolio-tag">Hybrid AI</span>
+          <h3 class="portfolio-name">Silk &amp; Stone</h3>
+          <p class="portfolio-credits">Съёмка &middot; AI VFX &middot; Грейдинг</p>
+        </div>
+      </a>
+
+      <a class="portfolio-item reveal-scale" data-video="https://www.youtube.com/shorts/gE6tm0lBbR4" href="#">
+        <div class="portfolio-placeholder" style="background:linear-gradient(225deg, rgba(201,168,124,0.08) 0%, #0f0f15 40%, rgba(124,108,240,0.1) 100%)"></div>
+        <div class="portfolio-play">
+          <svg width="18" height="18" viewBox="0 0 16 16" fill="var(--text)"><polygon points="5,2 13,8 5,14"/></svg>
+        </div>
+        <div class="portfolio-overlay">
+          <span class="portfolio-tag">Hybrid AI</span>
+          <h3 class="portfolio-name">Velvet Aura</h3>
+          <p class="portfolio-credits">Концепция &middot; Съёмка &middot; AI VFX</p>
+        </div>
+      </a>
+
+    </div>
+  </div>
+</section>
+
+<!-- What's Included -->
+<section class="section" id="included">
+  <div class="container">
+    <p class="section-label reveal">Продакшен</p>
+    <h2 class="section-title reveal">Что входит в каждый проект</h2>
+    <div class="included-grid">
+
+      <div class="included-item reveal">
+        <svg class="included-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M16 4a8 8 0 0 1 5 14.3V22H11v-3.7A8 8 0 0 1 16 4z"/><line x1="12" y1="26" x2="20" y2="26"/></svg>
+        <p class="included-label">Creative Direction</p>
+      </div>
+
+      <div class="included-item reveal">
+        <svg class="included-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="7" y="3" width="18" height="26" rx="2"/><line x1="11" y1="10" x2="21" y2="10"/><line x1="11" y1="15" x2="21" y2="15"/><line x1="11" y1="20" x2="17" y2="20"/></svg>
+        <p class="included-label">Storytelling</p>
+      </div>
+
+      <div class="included-item reveal">
+        <svg class="included-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="8" width="20" height="16" rx="2"/><path d="M23 14l6-4v12l-6-4z"/></svg>
+        <p class="included-label">Filmmaking</p>
+      </div>
+
+      <div class="included-item reveal">
+        <svg class="included-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><path d="M16 2l2.5 7H26l-6 4.5 2.3 7L16 16l-6.3 4.5 2.3-7-6-4.5h7.5z"/></svg>
+        <p class="included-label">AI Production</p>
+      </div>
+
+      <div class="included-item reveal">
+        <svg class="included-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="12" width="18" height="14" rx="1.5"/><rect x="8" y="8" width="18" height="14" rx="1.5"/><rect x="12" y="4" width="18" height="14" rx="1.5"/></svg>
+        <p class="included-label">AI VFX</p>
+      </div>
+
+      <div class="included-item reveal">
+        <svg class="included-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="22" r="5"/><circle cx="21" cy="22" r="5"/><line x1="16" y1="22" x2="28" y2="5"/><line x1="16" y1="22" x2="4" y2="5"/></svg>
+        <p class="included-label">Post Production</p>
+      </div>
+
+      <div class="included-item reveal">
+        <svg class="included-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><circle cx="10" cy="12" r="5"/><circle cx="22" cy="12" r="5"/><circle cx="16" cy="22" r="5"/></svg>
+        <p class="included-label">Color Grading</p>
+      </div>
+
+      <div class="included-item reveal">
+        <svg class="included-icon" viewBox="0 0 32 32" fill="none" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"><line x1="6" y1="16" x2="6" y2="16" stroke-width="2"/><line x1="10" y1="11" x2="10" y2="21"/><line x1="14" y1="6" x2="14" y2="26"/><line x1="18" y1="9" x2="18" y2="23"/><line x1="22" y1="12" x2="22" y2="20"/><line x1="26" y1="14" x2="26" y2="18"/></svg>
+        <p class="included-label">Sound Design</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- Process -->
+<section class="section" id="process">
+  <div class="container">
+    <p class="section-label reveal">Процесс</p>
+    <h2 class="section-title reveal">От идеи до результата</h2>
+    <div class="process-steps">
+
+      <div class="process-step reveal">
+        <div class="process-dot"></div>
+        <div class="process-num">I</div>
+        <h3 class="process-title">Идея</h3>
+        <p class="process-desc">Обсуждаем задачу, аудиторию и формат</p>
+      </div>
+
+      <div class="process-step reveal">
+        <div class="process-dot"></div>
+        <div class="process-num">II</div>
+        <h3 class="process-title">Сценарий</h3>
+        <p class="process-desc">Разрабатываю концепцию и раскадровку</p>
+      </div>
+
+      <div class="process-step reveal">
+        <div class="process-dot"></div>
+        <div class="process-num">III</div>
+        <h3 class="process-title">Продакшен</h3>
+        <p class="process-desc">Съёмка, генерация, монтаж, обработка</p>
+      </div>
+
+      <div class="process-step reveal">
+        <div class="process-dot"></div>
+        <div class="process-num">IV</div>
+        <h3 class="process-title">Результат</h3>
+        <p class="process-desc">Готовый ролик для ваших площадок</p>
+      </div>
+
+    </div>
+  </div>
+</section>
+
+<!-- Contact -->
+<section class="section contact" id="contact">
+  <div class="container">
+    <h2 class="contact-title reveal">Давайте создавать<br>вместе</h2>
+    <p class="contact-sub reveal">Расскажите о вашем проекте — подберу формат и подход, которые сработают для вашей аудитории.</p>
+
+    <div class="contact-socials reveal">
+      <a class="social-link" href="https://t.me/sovanisova" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm4.64 6.8c-.15 1.58-.8 5.42-1.13 7.19-.14.75-.42 1-.68 1.03-.58.05-1.02-.38-1.58-.75-.88-.58-1.38-.94-2.23-1.5-.99-.65-.35-1.01.22-1.59.15-.15 2.71-2.48 2.76-2.69a.2.2 0 0 0-.07-.2c-.08-.06-.19-.04-.27-.02-.12.03-1.99 1.27-5.63 3.72-.53.36-1.01.54-1.43.53-.47-.01-1.38-.27-2.05-.49-.83-.27-1.49-.42-1.43-.88.03-.24.37-.49 1.02-.75 3.98-1.73 6.64-2.88 7.97-3.44 3.8-1.58 4.59-1.86 5.1-1.87.11 0 .37.03.54.17.14.12.18.28.2.45-.01.06.01.24 0 .37z"/></svg>
+        <span>Telegram</span>
+      </a>
+      <a class="social-link" href="https://instagram.com/sovanisova" target="_blank" rel="noopener">
+        <svg viewBox="0 0 24 24" fill="currentColor"><path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zM12 0C8.741 0 8.333.014 7.053.072 2.695.272.273 2.69.073 7.052.014 8.333 0 8.741 0 12c0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98C8.333 23.986 8.741 24 12 24c3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98C15.668.014 15.259 0 12 0zm0 5.838a6.162 6.162 0 1 0 0 12.324 6.162 6.162 0 0 0 0-12.324zM12 16a4 4 0 1 1 0-8 4 4 0 0 1 0 8zm6.406-11.845a1.44 1.44 0 1 0 0 2.881 1.44 1.44 0 0 0 0-2.881z"/></svg>
+        <span>Instagram</span>
+      </a>
+      <a class="social-link" href="mailto:sovanisova@mail.ru">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="M22 4L12 13 2 4"/></svg>
+        <span>Email</span>
+      </a>
+    </div>
+
+    <a href="https://t.me/sovanisova" class="btn" target="_blank" rel="noopener">
+      <span>Написать в Telegram</span>
+      <svg class="btn-arrow" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="8" x2="13" y2="8"/><polyline points="9,4 13,8 9,12"/></svg>
+    </a>
+  </div>
+</section>
+
+<!-- Footer -->
+<footer class="footer">
+  <p>&copy; 2026 sovanisova</p>
+</footer>
+
+<!-- Video Modal -->
+<div class="modal" id="modal">
+  <div class="modal-content" id="modalContent">
+    <button class="modal-close" id="modalClose" aria-label="Закрыть">&times;</button>
+    <div class="modal-frame" id="modalFrame"></div>
+  </div>
+</div>
+
+<script>
+(function() {
+  // Navigation
+  var nav = document.getElementById('nav');
+  var toggle = document.getElementById('navToggle');
+  var links = document.getElementById('navLinks');
+
+  window.addEventListener('scroll', function() {
+    nav.classList.toggle('scrolled', window.scrollY > 60);
+  }, { passive: true });
+
+  toggle.addEventListener('click', function() {
+    toggle.classList.toggle('active');
+    links.classList.toggle('open');
+    document.body.style.overflow = links.classList.contains('open') ? 'hidden' : '';
+  });
+
+  links.querySelectorAll('a').forEach(function(a) {
+    a.addEventListener('click', function() {
+      toggle.classList.remove('active');
+      links.classList.remove('open');
+      document.body.style.overflow = '';
+    });
+  });
+
+  // Custom Cursor
+  var cursor = document.getElementById('cursor');
+  var glow = document.getElementById('cursorGlow');
+  var mx = 0, my = 0, cx = 0, cy = 0;
+
+  if (window.matchMedia('(pointer: fine)').matches) {
+    document.addEventListener('mousemove', function(e) {
+      mx = e.clientX;
+      my = e.clientY;
+      glow.style.left = mx + 'px';
+      glow.style.top = my + 'px';
+    });
+
+    (function loop() {
+      cx += (mx - cx) * 0.12;
+      cy += (my - cy) * 0.12;
+      cursor.style.left = cx + 'px';
+      cursor.style.top = cy + 'px';
+      requestAnimationFrame(loop);
+    })();
+
+    document.querySelectorAll('a, button, .portfolio-item, .service-card').forEach(function(el) {
+      el.addEventListener('mouseenter', function() { cursor.classList.add('hover'); });
+      el.addEventListener('mouseleave', function() { cursor.classList.remove('hover'); });
+    });
+  }
+
+  // Video Modal
+  var modal = document.getElementById('modal');
+  var modalContent = document.getElementById('modalContent');
+  var modalFrame = document.getElementById('modalFrame');
+  var modalClose = document.getElementById('modalClose');
+
+  function getEmbed(url) {
+    var m = url.match(/(?:youtube\.com\/watch\?v=|youtu\.be\/|youtube\.com\/shorts\/)([\w-]+)/);
+    if (m) return 'https://www.youtube.com/embed/' + m[1] + '?autoplay=1&rel=0';
+    return url;
+  }
+
+  document.querySelectorAll('.portfolio-item[data-video]').forEach(function(item) {
+    item.addEventListener('click', function(e) {
+      e.preventDefault();
+      var url = this.getAttribute('data-video');
+      if (!url) return;
+      modalContent.className = 'modal-content';
+      modalFrame.innerHTML = '<iframe src="' + getEmbed(url) + '" allow="autoplay; fullscreen" allowfullscreen></iframe>';
+      modal.classList.add('open');
+      document.body.style.overflow = 'hidden';
+    });
+  });
+
+  function closeModal() {
+    modal.classList.remove('open');
+    modalFrame.innerHTML = '';
+    document.body.style.overflow = '';
+  }
+
+  modalClose.addEventListener('click', closeModal);
+  modal.addEventListener('click', function(e) { if (e.target === modal) closeModal(); });
+  document.addEventListener('keydown', function(e) { if (e.key === 'Escape') closeModal(); });
+
+  // Fallback reveal for browsers without animation-timeline
+  if (!CSS.supports('animation-timeline', 'view()')) {
+    var obs = new IntersectionObserver(function(entries) {
+      entries.forEach(function(entry) {
+        if (entry.isIntersecting) {
+          entry.target.style.opacity = '1';
+          entry.target.style.transform = 'none';
+          entry.target.style.transition = 'opacity 0.7s ease, transform 0.7s ease';
+          obs.unobserve(entry.target);
+        }
+      });
+    }, { threshold: 0.1, rootMargin: '0px 0px -60px 0px' });
+
+    document.querySelectorAll('.reveal, .reveal-scale, .reveal-left, .reveal-right').forEach(function(el) {
+      el.style.opacity = '0';
+      el.style.transform = 'translateY(30px)';
+      obs.observe(el);
+    });
+  }
+})();
+</script>
+</body>
+</html>
