@@ -132,6 +132,9 @@ async def build_user_context(session: AsyncSession, user: User) -> str:
     # Подарки
     await _append_gift_context(session, user, today, lines)
 
+    # Поездки
+    await _append_trip_context(session, user, lines)
+
     return "\n".join(lines)
 
 
@@ -378,6 +381,32 @@ async def _append_gift_context(
         for g in ideas[:5]:
             pname = g.person.name if g.person else "?"
             lines.append(f"  💡 {g.title} → {pname}")
+
+    lines.append("")
+
+
+async def _append_trip_context(
+    session: AsyncSession, user: User, lines: list[str]
+) -> None:
+    from db.trip_queries import list_trips
+    from services.trip import TRIP_STATUSES
+
+    trips = await list_trips(session, user.id, active_only=True)
+    if not trips:
+        return
+
+    lines.append("== ПОЕЗДКИ ==")
+    for trip in trips:
+        status = TRIP_STATUSES.get(trip.status, trip.status)
+        items = trip.items or []
+        checked = sum(1 for i in items if i.checked)
+        total = len(items)
+        pct = f" ({checked}/{total})" if total else ""
+        dest = f" → {trip.destination}" if trip.destination else ""
+        lines.append(f"  {status} {trip.name}{dest}{pct}")
+        unchecked = [i.text for i in items if not i.checked][:5]
+        if unchecked:
+            lines.append(f"    Осталось: {', '.join(unchecked)}")
 
     lines.append("")
 

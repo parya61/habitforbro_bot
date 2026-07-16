@@ -31,8 +31,9 @@ def _finance_menu_kb() -> InlineKeyboardBuilder:
     kb.button(text="🛒 Продукты", callback_data="groc:menu")
     kb.button(text="☕ Кафе", callback_data="cafe:menu")
     kb.button(text="🎁 Подарки", callback_data="gift:menu")
+    kb.button(text="✈️ Поездки", callback_data="trip:menu")
     kb.button(text="🏠 Меню", callback_data="go:menu")
-    kb.adjust(2, 2, 2, 1, 1)
+    kb.adjust(2, 2, 2, 2, 1)
     return kb
 
 

@@ -278,6 +278,36 @@ class GiftIdea(Base):
     person: Mapped["Person | None"] = relationship(back_populates="gifts")
 
 
+class Trip(Base):
+    __tablename__ = "trips"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    user_id: Mapped[int] = mapped_column(ForeignKey("users.id"), index=True)
+    name: Mapped[str] = mapped_column(String(128))
+    destination: Mapped[str | None] = mapped_column(String(256), nullable=True)
+    start_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    end_date: Mapped[date | None] = mapped_column(Date, nullable=True)
+    status: Mapped[str] = mapped_column(String(16), default="planning")
+    notes: Mapped[str | None] = mapped_column(Text, nullable=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+
+    user: Mapped["User"] = relationship()
+    items: Mapped[list["ChecklistItem"]] = relationship(back_populates="trip", cascade="all, delete-orphan")
+
+
+class ChecklistItem(Base):
+    __tablename__ = "checklist_items"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    trip_id: Mapped[int] = mapped_column(ForeignKey("trips.id"), index=True)
+    text: Mapped[str] = mapped_column(String(256))
+    category: Mapped[str] = mapped_column(String(32), default="other")
+    checked: Mapped[bool] = mapped_column(Boolean, default=False)
+    sort_order: Mapped[int] = mapped_column(Integer, default=0)
+
+    trip: Mapped["Trip"] = relationship(back_populates="items")
+
+
 class CafePlace(Base):
     __tablename__ = "cafe_places"
 

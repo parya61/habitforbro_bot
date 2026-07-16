@@ -149,5 +149,12 @@ class GiftFlow(StatesGroup):
     gift_price = State()     # примерная цена
 
 
+class TripFlow(StatesGroup):
+    trip_name = State()      # название поездки
+    trip_dest = State()      # куда
+    trip_dates = State()     # даты
+    add_item = State()       # добавить пункт
+
+
 class AnalyticsFlow(StatesGroup):
     chat = State()         # диалог с AI-аналитиком
