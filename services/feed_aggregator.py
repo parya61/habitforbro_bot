@@ -18,9 +18,9 @@ log = logging.getLogger(__name__)
 
 
 async def fetch_youtube_source(session: AsyncSession, source) -> int:
-    from services.feed_youtube import fetch_rss, get_transcript
+    from services.feed_youtube import fetch_videos, get_transcript
 
-    videos = fetch_rss(source.source_id, max_items=5)
+    videos = fetch_videos(source.source_id, max_items=5)
     added = 0
 
     for video in videos:

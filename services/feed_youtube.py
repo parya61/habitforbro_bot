@@ -1,8 +1,10 @@
-"""YouTube feed: RSS monitor + transcript extraction."""
+"""YouTube feed: RSS monitor + transcript extraction + yt-dlp fallback."""
 from __future__ import annotations
 
+import json
 import logging
 import re
+import subprocess
 from datetime import datetime
 
 import feedparser
@@ -83,6 +85,68 @@ def get_transcript(video_id: str, langs: tuple[str, ...] = ("ru", "en")) -> str 
     except Exception as exc:
         log.warning("Transcript error for %s: %s", video_id, exc)
         return None
+
+
+def fetch_via_ytdlp(channel_id: str, max_items: int = 5) -> list[dict]:
+    """Fallback: list recent videos via yt-dlp when RSS returns nothing."""
+    url = f"https://www.youtube.com/channel/{channel_id}/videos"
+    cmd = [
+        "yt-dlp", "--dump-json", "--flat-playlist",
+        "--playlist-items", f"1-{max_items}",
+        "--no-warnings", "--quiet",
+        url,
+    ]
+    try:
+        proc = subprocess.run(
+            cmd, capture_output=True, text=True, timeout=60,
+        )
+        if proc.returncode != 0:
+            log.warning("yt-dlp failed for %s: %s", channel_id, proc.stderr[:200])
+            return []
+    except FileNotFoundError:
+        log.warning("yt-dlp not installed")
+        return []
+    except subprocess.TimeoutExpired:
+        log.warning("yt-dlp timed out for %s", channel_id)
+        return []
+
+    results = []
+    for line in proc.stdout.strip().splitlines():
+        try:
+            data = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+
+        video_id = data.get("id", "")
+        if not video_id:
+            continue
+
+        published = None
+        upload_date = data.get("upload_date", "")
+        if upload_date and len(upload_date) == 8:
+            try:
+                published = datetime.strptime(upload_date, "%Y%m%d")
+            except ValueError:
+                pass
+
+        results.append({
+            "video_id": video_id,
+            "title": data.get("title", ""),
+            "url": YT_VIDEO_URL.format(video_id=video_id),
+            "published": published,
+            "author": data.get("channel", data.get("uploader", "")),
+        })
+
+    return results
+
+
+def fetch_videos(channel_id: str, max_items: int = 5) -> list[dict]:
+    """Try RSS first, fall back to yt-dlp."""
+    videos = fetch_rss(channel_id, max_items=max_items)
+    if videos:
+        return videos
+    log.info("RSS empty for %s, trying yt-dlp", channel_id)
+    return fetch_via_ytdlp(channel_id, max_items=max_items)
 
 
 def fetch_channel_title(channel_id: str) -> str:
