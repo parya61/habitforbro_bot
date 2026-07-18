@@ -650,6 +650,53 @@ async def _hh_vacancy_monitor() -> None:
         logger.error("HH | Monitor failed: %s", exc)
 
 
+async def _habit_risks(session, user, today: date) -> list[str]:
+    """Привычки под риском срыва сегодня: слабый день недели + серия на кону.
+
+    Эвристика вместо ML: провал этого дня недели за 28 дн >= 40%,
+    или 2+ пропуска за последние 7 дней при живой серии >= 5.
+    """
+    habits = [
+        h for h in await list_habits(session, user.id)
+        if h.status == "active" and is_scheduled(h, today)
+    ]
+    scored = []
+    for h in habits:
+        wd_planned = wd_done = recent_miss = 0
+        for i in range(1, 29):
+            d = today - timedelta(days=i)
+            if not is_scheduled(h, d):
+                continue
+            log = await get_log(session, h.id, d)
+            done = bool(log and log.done)
+            if d.weekday() == today.weekday():
+                wd_planned += 1
+                wd_done += int(done)
+            if i <= 7 and not done:
+                recent_miss += 1
+
+        streak = await current_streak(session, h)
+        wd_fail = 1 - wd_done / wd_planned if wd_planned >= 2 else 0
+
+        if wd_fail >= 0.4 and streak >= 3:
+            pct = round(100 * (1 - wd_fail))
+            scored.append((
+                wd_fail * streak,
+                f"{h.emoji} {h.title}: {WEEKDAY_NAMES[today.weekday()]} — "
+                f"слабый день ({pct}% выполнения), серия {streak} дн на кону",
+            ))
+        elif recent_miss >= 2 and streak >= 5:
+            scored.append((
+                0.3 * streak,
+                f"{h.emoji} {h.title}: {recent_miss} пропуска за неделю, "
+                f"серия {streak} дн под угрозой",
+            ))
+
+    # навигатор, а не надзиратель: максимум 3 самых ценных предупреждения
+    scored.sort(key=lambda x: -x[0])
+    return [text for _, text in scored[:3]]
+
+
 async def _unified_morning_brief() -> None:
     """Единый утренний бриф для админа: привычки, ДР, финансы, MLSecOps, вакансии.
 
@@ -679,6 +726,10 @@ async def _unified_morning_brief() -> None:
                 "\n<b>Привычки:</b> " + ", ".join(f"{h.emoji} {h.title}" for h in habits)
             )
 
+        risks = await _habit_risks(session, user, today)
+        if risks:
+            parts.append("\n⚡ <b>Риски дня:</b>\n" + "\n".join(f"• {r}" for r in risks))
+
         persons = await list_persons(session, user.id)
         bdays = upcoming_birthdays(persons, today, days_ahead=14)
         if bdays:
@@ -690,7 +741,12 @@ async def _unified_morning_brief() -> None:
                 if given:
                     gift_mark = " — 🎁 подарок готов"
                 elif ideas:
-                    gift_mark = f" — 💡 идеи: {', '.join(g.title for g in ideas[:2])}"
+                    idea_strs = []
+                    for g in ideas[:2]:
+                        price = f" ~{g.price_estimate:,.0f}₽".replace(",", " ") \
+                            if g.price_estimate else ""
+                        idea_strs.append(f"{g.title}{price}")
+                    gift_mark = f" — 💡 идеи: {', '.join(idea_strs)}"
                 else:
                     gift_mark = " — ⚠️ <b>подарок не выбран!</b>"
                 lines.append(
@@ -713,9 +769,24 @@ async def _unified_morning_brief() -> None:
             )
         )
         spent = res.scalar() or 0
-        if spent:
+        res = await session.execute(
+            select(func.sum(FinTransaction.amount))
+            .outerjoin(FinCategory, FinCategory.id == FinTransaction.category_id)
+            .where(
+                FinTransaction.user_id == user.id,
+                FinTransaction.tx_type == "income",
+                FinTransaction.tx_date >= month_start,
+                (FinCategory.name.is_(None)) | (FinCategory.name != "Переводы"),
+            )
+        )
+        earned = res.scalar() or 0
+        if spent or earned:
             spent_str = f"{spent:,.0f}".replace(",", " ")
-            parts.append(f"\n\U0001f4b0 Расходы с начала месяца: {spent_str} ₽")
+            free_str = f"{earned - spent:,.0f}".replace(",", " ")
+            parts.append(
+                f"\n\U0001f4b0 Расходы месяца: {spent_str} ₽ | "
+                f"свободный остаток: {free_str} ₽"
+            )
 
         yesterday = datetime.utcnow() - timedelta(hours=24)
         items = await recent_items(session, user.id, limit=50)
