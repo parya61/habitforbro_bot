@@ -92,7 +92,7 @@ async def build_user_context(session: AsyncSession, user: User) -> str:
     # Цели
     for level, level_name in [
         ("life", "На жизнь"), ("year", "На год"),
-        ("month", "На месяц"), ("tomorrow", "На завтра"),
+        ("month", "На месяц"), ("tomorrow", "На сегодня"),
     ]:
         goals = await list_goals(session, user.id, level)
         if goals:

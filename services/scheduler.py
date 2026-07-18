@@ -81,7 +81,15 @@ async def setup_scheduler(bot: Bot) -> None:
     )
     _scheduler.add_job(
         _feed_check,
-        CronTrigger(hour="*/3", minute=30, timezone=base_tz),
+        CronTrigger(hour=6, minute=0, timezone=base_tz),
+    )
+    _scheduler.add_job(
+        _mlsec_morning_digest,
+        CronTrigger(hour=7, minute=30, timezone=base_tz),
+    )
+    _scheduler.add_job(
+        _hh_vacancy_monitor,
+        CronTrigger(day="*/2", hour=7, minute=50, timezone=base_tz),
     )
 
     async with get_session() as session:
@@ -170,19 +178,56 @@ async def _evening_broadcast() -> None:
 
 
 async def _weekly_report() -> None:
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+    from services.ai_analytics import SYSTEM_PROMPT, ask_deepseek, build_user_context
+
     async with get_session() as session:
         users = await list_users(session)
         for user in users:
             stats = await user_stats(session, user.id)
-            text = (
-                "\U0001f4c5 <b>Итоги недели</b>\n"
-                f"Выполнено: {stats.week_done}/{stats.week_planned} "
-                f"({stats.week_percent}%)\n"
-                f"\U0001f3c6 Рекорд серии: {stats.record_streak} дн.\n"
-                f"Активных привычек: {stats.active_habits}\n\n"
-                "Так держать! Новая неделя — новые серии \U0001f525"
+
+            context = await build_user_context(session, user)
+
+            prompt = (
+                "Ты — Керя, персональный ассистент. "
+                "Ниже данные пользователя за неделю: привычки, дневник, цели, серии.\n\n"
+                f"{context}\n\n"
+                "Сделай воскресный разбор недели:\n"
+                "1. Что получилось хорошо — похвали конкретно\n"
+                "2. Где провал или спад — назови причину если видно\n"
+                "3. Дай 2-3 конкретных совета на следующую неделю\n"
+                "4. Если есть записи в дневнике — учти настроение и контекст\n"
+                "Формат: коротко, по-дружески, на русском. До 1500 символов."
             )
-            await _safe_send(user.telegram_id, text)
+
+            resp = await ask_deepseek(
+                config.deepseek_api_key,
+                [
+                    {"role": "system", "content": SYSTEM_PROMPT},
+                    {"role": "user", "content": prompt},
+                ],
+            )
+
+            if resp.ok and resp.text:
+                text = f"\U0001f4c5 <b>Итоги недели от Кери</b>\n\n{resp.text}"
+            else:
+                text = (
+                    "\U0001f4c5 <b>Итоги недели</b>\n"
+                    f"Выполнено: {stats.week_done}/{stats.week_planned} "
+                    f"({stats.week_percent}%)\n"
+                    f"\U0001f3c6 Рекорд серии: {stats.record_streak} дн.\n"
+                    f"Активных привычек: {stats.active_habits}\n\n"
+                    "Так держать! Новая неделя — новые серии \U0001f525"
+                )
+
+            kb = InlineKeyboardMarkup(inline_keyboard=[
+                [InlineKeyboardButton(
+                    text="\U0001f4ac Задать вопрос Кере",
+                    callback_data="analytics:weekly_start",
+                )],
+            ])
+            await _safe_send(user.telegram_id, text, markup=kb)
 
 
 async def _compute_top3(session, month_start: date, month_end: date):
@@ -423,6 +468,95 @@ async def _feed_check() -> None:
                             total, results.get("telegram", 0), results.get("youtube", 0))
         except Exception as exc:
             logger.error("FEED | Check failed: %s", exc)
+
+
+async def _mlsec_morning_digest() -> None:
+    from datetime import datetime, timedelta
+
+    from db.feed_queries import recent_items
+    from services.ai_analytics import ask_deepseek
+
+    async with get_session() as session:
+        user = await get_user_by_tg(session, config.admin_id)
+        if not user:
+            return
+
+        yesterday = datetime.utcnow() - timedelta(hours=24)
+        items = await recent_items(session, user.id, limit=50)
+        fresh = [
+            it for it in items
+            if it.published_at and it.published_at >= yesterday
+        ]
+
+        if not fresh:
+            await _safe_send(
+                config.admin_id,
+                "📡 <b>Утренняя сводка MLSecOps</b>\n\n"
+                "За последние 24 часа ничего нового и интересного "
+                "по твоим подпискам не появилось. Спокойное утро ☕",
+            )
+            return
+
+        digest_parts = []
+        for it in fresh:
+            src = it.source.title if it.source else "?"
+            title = (it.title or "")[:120]
+            text_preview = (it.text or "")[:400]
+            url = it.url or ""
+            digest_parts.append(
+                f"[{src}] {title}\n{text_preview}\n{url}"
+            )
+
+        raw_feed = "\n---\n".join(digest_parts)
+
+        prompt = (
+            "Ты — ИБ-аналитик. Ниже — посты из Telegram-каналов и YouTube "
+            "за последние 24 часа по темам: MLSecOps, ML Security, AI Safety, "
+            "ИБ, DevSecOps, машинное обучение.\n\n"
+            "Составь краткую утреннюю сводку для ИБ-инженера "
+            "(специализация MLSecOps, магистратура ВШЭ).\n"
+            "Формат:\n"
+            "- Заголовок новости + 1-2 предложения суть\n"
+            "- Если есть ссылка — добавь\n"
+            "- Выдели самое важное/практически полезное\n"
+            "- Если ничего реально ценного — так и скажи\n"
+            "- На русском, коротко (до 2000 символов)\n\n"
+            f"Посты ({len(fresh)} шт.):\n\n{raw_feed[:6000]}"
+        )
+
+        resp = await ask_deepseek(
+            config.deepseek_api_key,
+            [{"role": "user", "content": prompt}],
+        )
+
+        if resp.ok and resp.text:
+            msg = f"📡 <b>Утренняя сводка MLSecOps</b>\n\n{resp.text}"
+        else:
+            lines = []
+            for it in fresh[:10]:
+                src = it.source.title if it.source else "?"
+                title = (it.title or "")[:80]
+                lines.append(f"• [{src}] {title}")
+            msg = (
+                f"📡 <b>Утренняя сводка</b>\n\n"
+                f"За 24ч — {len(fresh)} новых постов:\n"
+                + "\n".join(lines)
+            )
+
+        await _safe_send(config.admin_id, msg)
+        logger.info("DIGEST | Sent morning MLSecOps digest (%d items)", len(fresh))
+
+
+async def _hh_vacancy_monitor() -> None:
+    from services.hh_monitor import check_vacancies, format_vacancies
+
+    try:
+        vacancies = await check_vacancies()
+        msg = format_vacancies(vacancies)
+        await _safe_send(config.admin_id, msg)
+        logger.info("HH | Sent vacancy digest (%d new)", len(vacancies))
+    except Exception as exc:
+        logger.error("HH | Monitor failed: %s", exc)
 
 
 async def _safe_send(chat_id: int, text: str, markup=None) -> None:

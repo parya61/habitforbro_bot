@@ -9,3 +9,6 @@ logs/
 .pytest_cache/
 *.db-wal
 *.db-shm
+
+data/*
+!data/knowledge/

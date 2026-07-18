@@ -15,8 +15,8 @@ MAIN_MENU = ReplyKeyboardMarkup(
         [KeyboardButton(text="➕ Привычки"), KeyboardButton(text="📔 Дневник")],
         [KeyboardButton(text="📊 Статистика"), KeyboardButton(text="🎯 Цели")],
         [KeyboardButton(text="🏆 Рейтинг"), KeyboardButton(text="👥 Участники")],
-        [KeyboardButton(text="🎁 Призы"), KeyboardButton(text="🧠 Аналитика")],
-        [KeyboardButton(text="💰 Финансы"), KeyboardButton(text="⚙️ Настройки")],
+        [KeyboardButton(text="🎁 Призы"), KeyboardButton(text="💰 Финансы")],
+        [KeyboardButton(text="⚙️ Настройки")],
     ],
     resize_keyboard=True,
 )

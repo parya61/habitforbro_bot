@@ -78,43 +78,47 @@ def _chat_kb(messages_left: int) -> InlineKeyboardBuilder:
     return kb
 
 
-@router.message(Command("analytics"))
-@router.message(F.text == "🧠 Аналитика")
-async def cmd_analytics(message: Message, session: AsyncSession, user: User) -> None:
+@router.callback_query(F.data == "analytics:weekly_start")
+async def weekly_analytics_start(
+    callback: CallbackQuery,
+    session: AsyncSession,
+    user: User,
+    state: FSMContext,
+) -> None:
+    """Start a follow-up chat session from the weekly Kerya analysis."""
     if not DEEPSEEK_API_KEY:
-        await message.answer(
-            "⚠️ AI-аналитика временно недоступна.", reply_markup=home_kb()
-        )
+        await callback.answer("AI-аналитика недоступна", show_alert=True)
         return
 
-    can, reason = await _can_start_session(session, user.id)
+    analytics_session = AnalyticsSession(
+        user_id=user.id, max_messages=3
+    )
+    session.add(analytics_session)
+    await session.commit()
+    await session.refresh(analytics_session)
 
-    existing = await _get_active_session(session, user.id)
-    if existing and existing.messages_used < existing.max_messages:
-        left = existing.max_messages - existing.messages_used
-        await message.answer(
-            f"🧠 <b>AI-аналитика</b>\n\n"
-            f"У тебя есть активная сессия. Осталось вопросов: {left}/{MAX_MESSAGES}.\n"
-            f"Нажми «Начать анализ», чтобы продолжить.",
-            reply_markup=_analytics_menu_kb().as_markup(),
-        )
-        return
+    await callback.answer()
 
-    if not can:
-        await message.answer(
-            f"🧠 <b>AI-аналитика</b>\n\n"
-            f"Лимит на эту неделю исчерпан.\n{reason}",
-            reply_markup=home_kb(),
-        )
-        return
+    wait_msg = await callback.message.answer("⏳ Собираю контекст...")
 
-    await message.answer(
-        "🧠 <b>AI-аналитика</b>\n\n"
-        "Керя проанализирует твои привычки, дневник, цели и серии "
-        "и даст персональные рекомендации.\n\n"
-        f"У тебя будет {MAX_MESSAGES} сообщений — используй их с умом.\n"
-        "Всё полностью приватно — Керя видит только твои данные.",
-        reply_markup=_analytics_menu_kb().as_markup(),
+    context = await build_user_context(session, user)
+
+    messages = [
+        {"role": "system", "content": SYSTEM_PROMPT},
+        {"role": "user", "content": f"Данные пользователя:\n\n{context}"},
+        {"role": "assistant", "content": "Я изучил твои данные. Задавай вопросы!"},
+    ]
+
+    await state.set_state(AnalyticsFlow.chat)
+    await state.update_data(
+        session_id=analytics_session.id,
+        history=messages,
+    )
+
+    await wait_msg.edit_text(
+        "🧠 Керя готов ответить на вопросы по твоей неделе.\n"
+        "Напиши что интересует — 3 вопроса доступно.",
+        reply_markup=_chat_kb(3).as_markup(),
     )
 
 

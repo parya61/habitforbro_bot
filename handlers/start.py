@@ -83,7 +83,6 @@ MENU_TEXTS = {
     "🏆 Рейтинг": "leaderboard",
     "👥 Участники": "members",
     "🎁 Призы": "prizes",
-    "🧠 Аналитика": "analytics",
     "💰 Финансы": "finance",
     "⚙️ Настройки": "settings",
     "ℹ️ Помощь": "help",
@@ -123,9 +122,6 @@ async def _dispatch(dest: str, msg: Message, session: AsyncSession, user: User) 
     elif dest == "prizes":
         from handlers.prizes import show_prizes
         await show_prizes(msg, session, user)
-    elif dest == "analytics":
-        from handlers.analytics import cmd_analytics
-        await cmd_analytics(msg, session, user)
     elif dest == "finance":
         from handlers.finance import cmd_finance
         await cmd_finance(msg, session, user)
