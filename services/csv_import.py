@@ -231,10 +231,14 @@ def _normalize_header(h: str | None) -> str:
 
 
 def _find_col(headers: list[str], *candidates: str) -> int | None:
-    for i, h in enumerate(headers):
-        norm = _normalize_header(h)
-        for c in candidates:
-            if c in norm:
+    # Кандидаты в порядке приоритета: сначала ищем первый кандидат по всем
+    # колонкам, потом второй и т.д. Иначе «операц» матчится на «Дата операции»
+    # раньше, чем «описан» дойдёт до колонки «Описание» — и в merchant
+    # попадает дата (баг импорта, из-за которого 1058 транзакций
+    # потеряли названия магазинов).
+    for c in candidates:
+        for i, h in enumerate(headers):
+            if c in _normalize_header(h):
                 return i
     return None
 
@@ -251,7 +255,7 @@ def _parse_pdf_tables(tables: list[list[list[str | None]]]) -> tuple[list[TxRow]
 
         date_col = _find_col(header_row, "дата опер", "дата плат", "дата")
         amount_col = _find_col(header_row, "сумма плат", "сумма опер", "сумма")
-        desc_col = _find_col(header_row, "описан", "операц")
+        desc_col = _find_col(header_row, "описан", "назначен")
         cat_col = _find_col(header_row, "категор")
         status_col = _find_col(header_row, "статус")
 
@@ -301,46 +305,95 @@ def _parse_pdf_tables(tables: list[list[list[str | None]]]) -> tuple[list[TxRow]
     return rows, errors
 
 
-_PDF_LINE_RE = re.compile(
-    r"(\d{2}\.\d{2}\.\d{2,4})"    # date
-    r"\s+"
-    r"(.+?)"                       # description
-    r"\s+"
-    r"([+-]?\s*[\d\s]+[.,]?\d*)"   # amount
+# Формат текстовых выписок Т-Банка (pdfplumber не видит таблиц):
+#   12.07.2026 12.07.2026 -1 213.00 ₽ -1 213.00 ₽ Оплата в TRIKA NA 2179
+#   16:29 16:44 SOKOLINKE MOSCOW RUS          <- продолжение описания
+_TBANK_TX_RE = re.compile(
+    r"^(\d{2}\.\d{2}\.\d{4})\s+\d{2}\.\d{2}\.\d{4}\s+"  # дата операции + дата списания
+    r"([+-][\d\s]+[.,]\d{2})\s*₽?\s+"                    # сумма операции
+    r"[+-][\d\s]+[.,]\d{2}\s*₽?\s+"                      # сумма в валюте карты
+    r"(.*?)"                                              # описание (начало)
+    r"(?:\s+\d{4})?$"                                     # номер карты (опц.)
 )
+_TBANK_TIME_RE = re.compile(r"^\d{2}:\d{2}(?:\s+\d{2}:\d{2})?\s*")
+_TBANK_SKIP_RE = re.compile(
+    r"дата и время|операции списания|номер карты|итого|остаток|"
+    r"выписка|страница|договор|поступления|списания|акционерное|лицензия",
+    re.IGNORECASE,
+)
+
+# Категория по ключевым словам описания — работает, когда банк
+# не отдаёт свою категорию (текстовые PDF-выписки).
+MERCHANT_KEYWORD_CATS = [
+    (re.compile(r"внутренний перевод|между счетами|внутрибанковский перевод|"
+                r"перевод себе|перевод с договора|пополнение\.", re.I), "Переводы"),
+    (re.compile(r"внешний перевод|по номеру телефона", re.I), "Переводы"),
+    (re.compile(r"заработная плата|аванс|зарплат", re.I), "Зарплата"),
+    (re.compile(r"кэшбэк|cashback|проценты на остаток", re.I), "Кэшбэк"),
+    (re.compile(r"pyater|перекресток|perekrestok|magnit|магнит|vkusvill|"
+                r"вкусвилл|дикси|diksi|lenta|ashan|auchan|produkt", re.I), "Продукты"),
+    (re.compile(r"wildberries|ozon|aliexpress|yandex.?market", re.I), "Маркетплейсы"),
+    (re.compile(r"metro|мосметро|transport|taxi|такси|аэроэкспресс", re.I), "Транспорт"),
+    (re.compile(r"mts|мтс|beeline|megafon|tele2|yota", re.I), "Связь и подписки"),
+    (re.compile(r"apteka|аптек|clinic|клиник|стоматолог", re.I), "Здоровье"),
+    (re.compile(r"moychay|мойчай|чайн", re.I), "Чай"),
+]
+
+
+def _keyword_category(merchant: str, tx_type: str) -> str | None:
+    for rx, cat in MERCHANT_KEYWORD_CATS:
+        if rx.search(merchant):
+            # Переводы валидны в обе стороны: входящий перевод себе — не доход
+            if tx_type == "income" and cat not in ("Зарплата", "Кэшбэк", "Переводы"):
+                return None
+            return cat
+    return None
 
 
 def _parse_pdf_text(text: str) -> tuple[list[TxRow], list[str]]:
     rows: list[TxRow] = []
     errors: list[str] = []
+    current: dict | None = None
+
+    def flush():
+        nonlocal current
+        if current is None:
+            return
+        merchant = re.sub(r"\s+", " ", current["desc"]).strip()[:120]
+        amount, tx_type, our_cat = _classify(current["raw_amount"], "Другое")
+        kw_cat = _keyword_category(merchant, tx_type)
+        if kw_cat:
+            our_cat = kw_cat
+        rows.append(TxRow(
+            tx_date=current["date"], amount=amount, tx_type=tx_type,
+            tbank_category="Другое", our_category=our_cat,
+            merchant=merchant,
+        ))
+        current = None
 
     for line in text.splitlines():
         line = line.strip()
         if not line:
             continue
 
-        m = _PDF_LINE_RE.search(line)
-        if not m:
-            continue
+        m = _TBANK_TX_RE.match(line)
+        if m:
+            flush()
+            tx_date = _parse_date(m.group(1))
+            raw_amount = _parse_amount(m.group(2))
+            if tx_date is None or raw_amount is None or raw_amount == 0:
+                continue
+            current = {"date": tx_date, "raw_amount": raw_amount,
+                       "desc": m.group(3).strip()}
+        elif current is not None:
+            cont = _TBANK_TIME_RE.sub("", line).strip()
+            if cont and not _TBANK_SKIP_RE.search(cont):
+                current["desc"] += " " + cont
+            elif _TBANK_SKIP_RE.search(line):
+                # служебная строка = граница блока операции
+                flush()
 
-        tx_date = _parse_date(m.group(1))
-        if tx_date is None:
-            continue
-
-        raw_amount = _parse_amount(m.group(3))
-        if raw_amount is None or raw_amount == 0:
-            continue
-
-        merchant = m.group(2).strip()
-
-        amount, tx_type, our_cat = _classify(raw_amount, "Другое")
-
-        rows.append(TxRow(
-            tx_date=tx_date, amount=amount, tx_type=tx_type,
-            tbank_category="Другое", our_category=our_cat,
-            merchant=merchant,
-        ))
-
+    flush()
     return rows, errors
 
 

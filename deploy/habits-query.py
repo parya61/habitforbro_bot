@@ -107,14 +107,25 @@ def cmd_finance(args):
         "ROUND(SUM(t.amount), 2) AS total, COUNT(*) AS n "
         "FROM fin_transactions t LEFT JOIN fin_categories fc ON fc.id=t.category_id "
         "WHERE t.user_id=? AND strftime('%Y-%m', t.tx_date)=? "
+        "AND (fc.name IS NULL OR fc.name != 'Переводы') "
         "GROUP BY fc.name, fc.cat_type ORDER BY total DESC", (uid, month)
     ))
+    # Переводы между счетами — не доход и не расход, показываем отдельно
     totals = rows_to_list(c.execute(
-        "SELECT tx_type, ROUND(SUM(amount),2) AS total FROM fin_transactions "
-        "WHERE user_id=? AND strftime('%Y-%m', tx_date)=? GROUP BY tx_type",
+        "SELECT t.tx_type, ROUND(SUM(t.amount),2) AS total FROM fin_transactions t "
+        "LEFT JOIN fin_categories fc ON fc.id=t.category_id "
+        "WHERE t.user_id=? AND strftime('%Y-%m', t.tx_date)=? "
+        "AND (fc.name IS NULL OR fc.name != 'Переводы') GROUP BY t.tx_type",
         (uid, month)
     ))
-    out({"month": month, "totals": totals, "by_category": cats})
+    transfers = c.execute(
+        "SELECT ROUND(SUM(t.amount),2) FROM fin_transactions t "
+        "JOIN fin_categories fc ON fc.id=t.category_id "
+        "WHERE t.user_id=? AND strftime('%Y-%m', t.tx_date)=? "
+        "AND fc.name='Переводы'", (uid, month)
+    ).fetchone()[0] or 0
+    out({"month": month, "totals": totals,
+         "transfers_excluded": transfers, "by_category": cats})
 
 
 def cmd_habits(_args):

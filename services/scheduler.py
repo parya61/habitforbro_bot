@@ -698,12 +698,18 @@ async def _unified_morning_brief() -> None:
                 )
             parts.append("\n".join(lines))
 
+        from db.models import FinCategory
+
         month_start = today.replace(day=1)
         res = await session.execute(
-            select(func.sum(FinTransaction.amount)).where(
+            select(func.sum(FinTransaction.amount))
+            .outerjoin(FinCategory, FinCategory.id == FinTransaction.category_id)
+            .where(
                 FinTransaction.user_id == user.id,
                 FinTransaction.tx_type == "expense",
                 FinTransaction.tx_date >= month_start,
+                # переводы между своими счетами — не расход
+                (FinCategory.name.is_(None)) | (FinCategory.name != "Переводы"),
             )
         )
         spent = res.scalar() or 0
