@@ -33,7 +33,7 @@ from db.queries import (
     set_prize_winners,
 )
 from services.stats import user_stats
-from services.streaks import completion_rate, is_scheduled
+from services.streaks import completion_rate, current_streak, is_scheduled
 from utils import display_name, esc
 
 _scheduler: AsyncIOScheduler | None = None
@@ -176,6 +176,92 @@ async def _evening_broadcast() -> None:
             )
 
 
+MOOD_SCORE = {"😀": 5, "🙂": 4, "😐": 3, "😴": 2, "😔": 2, "😢": 1}
+WEEKDAY_NAMES = ["пн", "вт", "ср", "чт", "пт", "сб", "вс"]
+
+
+async def _compute_behavior_features(session, user) -> str:
+    """Поведенческие закономерности за 28 дней, посчитанные кодом.
+
+    LLM получает готовые цифры и интерпретирует — но не вычисляет их сам.
+    """
+    from db.queries import list_diary_entries
+
+    habits = [h for h in await list_habits(session, user.id) if h.status == "active"]
+    if not habits:
+        return ""
+    today = date.today()
+
+    day_stats: dict[date, tuple[int, int]] = {}
+    habit_miss: dict[int, int] = {h.id: 0 for h in habits}
+    habit_title = {h.id: h.title for h in habits}
+    for i in range(1, 29):
+        d = today - timedelta(days=i)
+        planned = [h for h in habits if is_scheduled(h, d)]
+        if not planned:
+            continue
+        done = 0
+        for h in planned:
+            log = await get_log(session, h.id, d)
+            if log and log.done:
+                done += 1
+            else:
+                habit_miss[h.id] += 1
+        day_stats[d] = (done, len(planned))
+
+    lines = []
+
+    wd: dict[int, list[int]] = {i: [0, 0] for i in range(7)}
+    for d, (done, planned) in day_stats.items():
+        wd[d.weekday()][0] += done
+        wd[d.weekday()][1] += planned
+    wd_parts = [
+        f"{WEEKDAY_NAMES[i]} {round(100 * wd[i][0] / wd[i][1])}%"
+        for i in range(7) if wd[i][1]
+    ]
+    if wd_parts:
+        lines.append("Выполнение по дням недели (28 дн): " + ", ".join(wd_parts))
+        worst = min(
+            (i for i in range(7) if wd[i][1]),
+            key=lambda i: wd[i][0] / wd[i][1],
+        )
+        lines.append(f"Самый слабый день: {WEEKDAY_NAMES[worst]}")
+
+    entries = await list_diary_entries(session, user.id, limit=40)
+    good, low = [], []
+    for e in entries:
+        score = MOOD_SCORE.get(e.mood or "")
+        st = day_stats.get(e.entry_date)
+        if score is None or not st or st[1] == 0:
+            continue
+        pct = st[0] / st[1]
+        if score >= 4:
+            good.append(pct)
+        elif score <= 2:
+            low.append(pct)
+    if good and low:
+        lines.append(
+            f"Настроение и привычки: в дни хорошего настроения выполнение "
+            f"{round(100 * sum(good) / len(good))}%, в дни плохого — "
+            f"{round(100 * sum(low) / len(low))}%"
+        )
+
+    streak_lines = []
+    for h in habits:
+        s = await current_streak(session, h)
+        if s >= 7:
+            streak_lines.append(f"{h.title} — {s} дн")
+    if streak_lines:
+        lines.append("Серии под защитой (не потерять!): " + "; ".join(streak_lines))
+
+    misses = sorted(habit_miss.items(), key=lambda kv: -kv[1])[:2]
+    miss_parts = [f"{habit_title[hid]} ({n} пропусков)" for hid, n in misses if n > 0]
+    if miss_parts:
+        lines.append("Чаще всего пропускается: " + ", ".join(miss_parts))
+
+    return "\n".join(lines)
+
+
 async def _weekly_report() -> None:
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -187,16 +273,22 @@ async def _weekly_report() -> None:
             stats = await user_stats(session, user.id)
 
             context = await build_user_context(session, user)
+            features = await _compute_behavior_features(session, user)
 
             prompt = (
                 "Ты — Керя, персональный ассистент. "
                 "Ниже данные пользователя за неделю: привычки, дневник, цели, серии.\n\n"
                 f"{context}\n\n"
+                "ВЫЧИСЛЕННЫЕ ЗАКОНОМЕРНОСТИ (точные цифры, доверяй им, "
+                "не пересчитывай):\n"
+                f"{features}\n\n"
                 "Сделай воскресный разбор недели:\n"
                 "1. Что получилось хорошо — похвали конкретно\n"
-                "2. Где провал или спад — назови причину если видно\n"
-                "3. Дай 2-3 конкретных совета на следующую неделю\n"
-                "4. Если есть записи в дневнике — учти настроение и контекст\n"
+                "2. Где провал или спад — используй закономерности выше "
+                "(слабый день недели, связь с настроением, пропуски)\n"
+                "3. Дай 2-3 конкретных совета на следующую неделю, "
+                "опираясь на цифры, а не на общие слова\n"
+                "4. Если есть серии под защитой — предупреди о рисках\n"
                 "Формат: коротко, по-дружески, на русском. До 1500 символов."
             )
 
@@ -588,11 +680,22 @@ async def _unified_morning_brief() -> None:
             )
 
         persons = await list_persons(session, user.id)
-        bdays = upcoming_birthdays(persons, today, days_ahead=7)
+        bdays = upcoming_birthdays(persons, today, days_ahead=14)
         if bdays:
-            lines = ["\n\U0001f382 <b>Дни рождения:</b>"]
+            lines = ["\n\U0001f382 <b>Дни рождения (14 дней):</b>"]
             for person, bdate, delta, age in bdays:
-                lines.append(f"• {person.name} — {days_label(delta)} ({age} лет)")
+                gifts = person.gifts or []
+                ideas = [g for g in gifts if g.status == "idea"]
+                given = [g for g in gifts if g.status in ("bought", "given")]
+                if given:
+                    gift_mark = " — 🎁 подарок готов"
+                elif ideas:
+                    gift_mark = f" — 💡 идеи: {', '.join(g.title for g in ideas[:2])}"
+                else:
+                    gift_mark = " — ⚠️ <b>подарок не выбран!</b>"
+                lines.append(
+                    f"• {person.name} — {days_label(delta)} ({age} лет){gift_mark}"
+                )
             parts.append("\n".join(lines))
 
         month_start = today.replace(day=1)
