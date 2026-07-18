@@ -267,6 +267,8 @@ async def _weekly_report() -> None:
 
     from services.ai_analytics import SYSTEM_PROMPT, ask_deepseek, build_user_context
 
+    from services.kerya_bridge import ask_kerya
+
     async with get_session() as session:
         users = await list_users(session)
         for user in users:
@@ -274,6 +276,33 @@ async def _weekly_report() -> None:
 
             context = await build_user_context(session, user)
             features = await _compute_behavior_features(session, user)
+
+            kerya_text = None
+            if user.telegram_id == config.admin_id:
+                # единый мозг: разбор для Максима делает сама Керя —
+                # с её памятью, философией и живым доступом к данным
+                kerya_prompt = (
+                    "Служебная задача: воскресный разбор недели для Максима. "
+                    "Твой ответ будет отправлен ему в бота как есть — пиши "
+                    "сразу текст разбора, без преамбул.\n\n"
+                    "ВЫЧИСЛЕННЫЕ ЗАКОНОМЕРНОСТИ (точные цифры, доверяй им):\n"
+                    f"{features}\n\n"
+                    "План разбора:\n"
+                    "1. Что получилось — похвали конкретно (habits-query habits, "
+                    "goals, diary — посмотри сам)\n"
+                    "2. Провалы и спады — используй закономерности выше\n"
+                    "3. 2-3 совета на следующую неделю, опираясь на цифры\n"
+                    "4. Серии под защитой — предупреди о рисках\n"
+                    "5. Одной строкой соотнеси неделю с PHILOSOPHY.md — "
+                    "приближался ли к тому, кем хочет стать\n"
+                    "Коротко, по-дружески, до 1500 символов."
+                )
+                kerya_text = await ask_kerya(kerya_prompt)
+
+            if kerya_text:
+                text = f"\U0001f4c5 <b>Итоги недели от Кери</b>\n\n{kerya_text}"
+                await _send_weekly(user, text)
+                continue
 
             prompt = (
                 "Ты — Керя, персональный ассистент. "
@@ -312,13 +341,19 @@ async def _weekly_report() -> None:
                     "Так держать! Новая неделя — новые серии \U0001f525"
                 )
 
-            kb = InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(
-                    text="\U0001f4ac Задать вопрос Кере",
-                    callback_data="analytics:weekly_start",
-                )],
-            ])
-            await _safe_send(user.telegram_id, text, markup=kb)
+            await _send_weekly(user, text)
+
+
+async def _send_weekly(user, text: str) -> None:
+    from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
+
+    kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="\U0001f4ac Задать вопрос Кере",
+            callback_data="analytics:weekly_start",
+        )],
+    ])
+    await _safe_send(user.telegram_id, text, markup=kb)
 
 
 async def _compute_top3(session, month_start: date, month_end: date):
