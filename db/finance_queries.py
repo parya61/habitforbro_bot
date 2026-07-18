@@ -186,26 +186,39 @@ async def get_category_by_name(
 
 # ---------- Агрегации ----------
 
+def _not_transfer():
+    """Переводы между своими счетами — не доход и не расход."""
+    return (FinCategory.name.is_(None)) | (FinCategory.name != "Переводы")
+
+
 async def monthly_totals(
     session: AsyncSession, user_id: int, month: str
 ) -> tuple[float, float]:
     start, end = _month_range(month)
 
     income = await session.scalar(
-        select(func.coalesce(func.sum(FinTransaction.amount), 0.0)).where(
+        select(func.coalesce(func.sum(FinTransaction.amount), 0.0))
+        .select_from(FinTransaction)
+        .outerjoin(FinCategory, FinTransaction.category_id == FinCategory.id)
+        .where(
             FinTransaction.user_id == user_id,
             FinTransaction.tx_type == "income",
             FinTransaction.tx_date >= start,
             FinTransaction.tx_date < end,
+            _not_transfer(),
         )
     ) or 0.0
 
     expenses = await session.scalar(
-        select(func.coalesce(func.sum(FinTransaction.amount), 0.0)).where(
+        select(func.coalesce(func.sum(FinTransaction.amount), 0.0))
+        .select_from(FinTransaction)
+        .outerjoin(FinCategory, FinTransaction.category_id == FinCategory.id)
+        .where(
             FinTransaction.user_id == user_id,
             FinTransaction.tx_type == "expense",
             FinTransaction.tx_date >= start,
             FinTransaction.tx_date < end,
+            _not_transfer(),
         )
     ) or 0.0
 
@@ -231,6 +244,7 @@ async def category_totals(
             FinTransaction.tx_type == tx_type,
             FinTransaction.tx_date >= start,
             FinTransaction.tx_date < end,
+            FinCategory.name != "Переводы",
         )
         .group_by(FinCategory.id)
         .order_by(func.sum(FinTransaction.amount).desc())

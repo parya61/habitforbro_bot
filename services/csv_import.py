@@ -326,17 +326,33 @@ _TBANK_SKIP_RE = re.compile(
 # не отдаёт свою категорию (текстовые PDF-выписки).
 MERCHANT_KEYWORD_CATS = [
     (re.compile(r"внутренний перевод|между счетами|внутрибанковский перевод|"
-                r"перевод себе|перевод с договора|пополнение\.", re.I), "Переводы"),
+                r"перевод себе|перевод с договора|пополнение\.|"
+                r"пополнение инвесткопилки", re.I), "Переводы"),
     (re.compile(r"внешний перевод|по номеру телефона", re.I), "Переводы"),
     (re.compile(r"заработная плата|аванс|зарплат", re.I), "Зарплата"),
     (re.compile(r"кэшбэк|cashback|проценты на остаток", re.I), "Кэшбэк"),
     (re.compile(r"pyater|перекресток|perekrestok|magnit|магнит|vkusvill|"
-                r"вкусвилл|дикси|diksi|lenta|ashan|auchan|produkt", re.I), "Продукты"),
-    (re.compile(r"wildberries|ozon|aliexpress|yandex.?market", re.I), "Маркетплейсы"),
-    (re.compile(r"metro|мосметро|transport|taxi|такси|аэроэкспресс", re.I), "Транспорт"),
-    (re.compile(r"mts|мтс|beeline|megafon|tele2|yota", re.I), "Связь и подписки"),
-    (re.compile(r"apteka|аптек|clinic|клиник|стоматолог", re.I), "Здоровье"),
-    (re.compile(r"moychay|мойчай|чайн", re.I), "Чай"),
+                r"вкусвилл|дикси|diksi|lenta|ashan|auchan|produkt|"
+                r"samokat|самокат", re.I), "Продукты"),
+    (re.compile(r"wildberries|озон|ozon|aliexpress|yandex.?market|avito|авито",
+                re.I), "Маркетплейсы"),
+    (re.compile(r"lamoda|ламода|offprice|zara|uniqlo|sportmaster", re.I), "Одежда"),
+    (re.compile(r"мосметро|аэроэкспрес|yandex\*\d+\*go|taxi|такси",
+                re.I), "Транспорт"),
+    (re.compile(r"gazprom-neft|лукойл|lukoil|rosneft|роснефт|азс|"
+                r"штраф|гибдд|ampp|парковк|шиномонтаж", re.I), "Авто"),
+    (re.compile(r"аэрофлот|aeroflot|s7 airlines|pobeda|ржд|rzd|"
+                r"hotel|отел|mercure|hostel|booking|ostrovok", re.I), "Путешествия"),
+    (re.compile(r"\bmts\b|мтс|beeline|megafon|tele2|yota", re.I), "Связь и подписки"),
+    (re.compile(r"apteka|аптек|clinic|клиник|стоматолог|dent|медиц|"
+                r"torgfarm|торгфарм|medko", re.I), "Здоровье"),
+    (re.compile(r"sportzal|спортзал|fitness|фитнес", re.I), "Спорт и уход"),
+    (re.compile(r"мфюа|universitet|университет|kursy|курсы", re.I), "Образование"),
+    (re.compile(r"moychay|мойчай|podarkivostoka|базар чаев|мэнку", re.I), "Чай"),
+    (re.compile(r"flowwow|цветы|flowers", re.I), "Подарки"),
+    (re.compile(r"\bcafe\b|кафе|варенич|restoran|ресторан|taverna|"
+                r"stanem druzyami|arrurru|hirosima|kofe|coffee|кофейн|burger|"
+                r"pizza|пицц|sushi|суши", re.I), "Кафе"),
 ]
 
 
