@@ -84,12 +84,8 @@ async def setup_scheduler(bot: Bot) -> None:
         CronTrigger(hour=6, minute=0, timezone=base_tz),
     )
     _scheduler.add_job(
-        _mlsec_morning_digest,
+        _unified_morning_brief,
         CronTrigger(hour=7, minute=30, timezone=base_tz),
-    )
-    _scheduler.add_job(
-        _hh_vacancy_monitor,
-        CronTrigger(day="*/2", hour=7, minute=50, timezone=base_tz),
     )
 
     async with get_session() as session:
@@ -144,6 +140,9 @@ async def _morning_broadcast() -> None:
         users = await list_users(session)
         for user in users:
             if not user.morning_enabled:
+                continue
+            # админ получает единый бриф в 07:30 — без дубля в 08:00
+            if user.telegram_id == config.admin_id:
                 continue
             today = date.today()
             habits = [h for h in await list_habits(session, user.id) if is_scheduled(h, today)]
@@ -557,6 +556,103 @@ async def _hh_vacancy_monitor() -> None:
         logger.info("HH | Sent vacancy digest (%d new)", len(vacancies))
     except Exception as exc:
         logger.error("HH | Monitor failed: %s", exc)
+
+
+async def _unified_morning_brief() -> None:
+    """Единый утренний бриф для админа: привычки, ДР, финансы, MLSecOps, вакансии.
+
+    Заменяет собой отдельные рассылки 07:30 (дайджест) и 07:50 (вакансии),
+    а утренний список привычек 08:00 для админа отключён.
+    """
+    from datetime import datetime, timedelta
+
+    from sqlalchemy import func, select
+
+    from db.feed_queries import recent_items
+    from db.gift_queries import list_persons
+    from db.models import FinTransaction
+    from services.ai_analytics import ask_deepseek
+    from services.gift import days_label, upcoming_birthdays
+
+    async with get_session() as session:
+        user = await get_user_by_tg(session, config.admin_id)
+        if not user:
+            return
+        today = date.today()
+        parts = ["☀️ <b>Утренний бриф</b>"]
+
+        habits = [h for h in await list_habits(session, user.id) if is_scheduled(h, today)]
+        if habits:
+            parts.append(
+                "\n<b>Привычки:</b> " + ", ".join(f"{h.emoji} {h.title}" for h in habits)
+            )
+
+        persons = await list_persons(session, user.id)
+        bdays = upcoming_birthdays(persons, today, days_ahead=7)
+        if bdays:
+            lines = ["\n\U0001f382 <b>Дни рождения:</b>"]
+            for person, bdate, delta, age in bdays:
+                lines.append(f"• {person.name} — {days_label(delta)} ({age} лет)")
+            parts.append("\n".join(lines))
+
+        month_start = today.replace(day=1)
+        res = await session.execute(
+            select(func.sum(FinTransaction.amount)).where(
+                FinTransaction.user_id == user.id,
+                FinTransaction.tx_type == "expense",
+                FinTransaction.tx_date >= month_start,
+            )
+        )
+        spent = res.scalar() or 0
+        if spent:
+            spent_str = f"{spent:,.0f}".replace(",", " ")
+            parts.append(f"\n\U0001f4b0 Расходы с начала месяца: {spent_str} ₽")
+
+        yesterday = datetime.utcnow() - timedelta(hours=24)
+        items = await recent_items(session, user.id, limit=50)
+        fresh = [it for it in items if it.published_at and it.published_at >= yesterday]
+        if fresh:
+            digest_parts = []
+            for it in fresh:
+                src = it.source.title if it.source else "?"
+                title = (it.title or "")[:100]
+                preview = (it.text or "")[:300]
+                digest_parts.append(f"[{src}] {title}\n{preview}\n{it.url or ''}")
+            prompt = (
+                "Сводка для ИБ-инженера (MLSecOps). Ниже посты за 24ч. "
+                "Выбери только реально полезное, 3-5 пунктов, каждый — заголовок "
+                "+ 1 предложение + ссылка. До 800 символов. Если ничего ценного — "
+                "одна строка 'ничего важного'. На русском.\n\n"
+                + "\n---\n".join(digest_parts)[:5000]
+            )
+            resp = await ask_deepseek(
+                config.deepseek_api_key,
+                [{"role": "user", "content": prompt}],
+            )
+            if resp.ok and resp.text:
+                parts.append(f"\n\U0001f4e1 <b>MLSecOps:</b>\n{resp.text}")
+            else:
+                parts.append(f"\n\U0001f4e1 За сутки {len(fresh)} новых постов в подписках")
+        else:
+            parts.append("\n\U0001f4e1 MLSecOps: за сутки тихо ☕")
+
+        if today.toordinal() % 2 == 0:
+            try:
+                from services.hh_monitor import check_vacancies, format_vacancies
+
+                vacancies = await check_vacancies()
+                if vacancies:
+                    parts.append("\n" + format_vacancies(vacancies))
+                else:
+                    parts.append("\n\U0001f50d Вакансии AI Security: новых нет")
+            except Exception as exc:
+                logger.error("BRIEF | hh check failed: %s", exc)
+
+        text = "\n".join(parts)
+        if len(text) > 4000:
+            text = text[:3990] + "…"
+        await _safe_send(config.admin_id, text)
+        logger.info("BRIEF | Morning brief sent (%d chars)", len(text))
 
 
 async def _safe_send(chat_id: int, text: str, markup=None) -> None:
