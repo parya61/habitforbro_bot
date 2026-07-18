@@ -7,6 +7,8 @@ Usage:
   habits-add expense <сумма> <категория> [описание] [--date YYYY-MM-DD] [--account debit|credit|family]
   habits-add income <сумма> <категория> [описание] [--date YYYY-MM-DD] [--account ...]
   habits-add categories               list valid category names
+  habits-add mission <привычка> <жизненная-цель>   link habit to a life goal (substrings)
+  habits-add missions                 show life goals and habit links
 
 Examples:
   habits-add expense 1543.50 Продукты "Пятёрочка"
@@ -59,6 +61,54 @@ def main():
             "ORDER BY cat_type, sort_order", (uid,)
         ).fetchall()
         print(json.dumps([dict(r) for r in rows], ensure_ascii=False, indent=1))
+        return
+
+    if args[0] == "missions":
+        goals = con.execute(
+            "SELECT id, title FROM goals WHERE user_id=? AND level='life' "
+            "AND status='active'", (uid,)
+        ).fetchall()
+        result = []
+        for g in goals:
+            linked = [r["title"] for r in con.execute(
+                "SELECT title FROM habits WHERE mission_id=? AND status='active'",
+                (g["id"],)
+            )]
+            result.append({"goal": g["title"], "habits": linked})
+        unlinked = [r["title"] for r in con.execute(
+            "SELECT title FROM habits WHERE user_id=? AND status='active' "
+            "AND mission_id IS NULL", (uid,)
+        )]
+        print(json.dumps({"missions": result, "unlinked_habits": unlinked},
+                         ensure_ascii=False, indent=1))
+        return
+
+    if args[0] == "mission":
+        if len(args) < 3:
+            fail("need: mission <привычка-подстрока> <цель-подстрока>")
+        habit_q, goal_q = args[1].lower(), args[2].lower()
+        habits = [r for r in con.execute(
+            "SELECT id, title FROM habits WHERE user_id=? AND status='active'",
+            (uid,)
+        ) if habit_q in r["title"].lower()]
+        goals = [r for r in con.execute(
+            "SELECT id, title FROM goals WHERE user_id=? AND level='life' "
+            "AND status='active'", (uid,)
+        ) if goal_q in r["title"].lower()]
+        if len(habits) != 1:
+            fail(f"привычка не однозначна ({len(habits)} совпадений): "
+                 f"{[h['title'] for h in habits]}")
+        if len(goals) != 1:
+            fail(f"цель не однозначна ({len(goals)} совпадений): "
+                 f"{[g['title'] for g in goals]}")
+        con.execute("UPDATE habits SET mission_id=? WHERE id=?",
+                    (goals[0]["id"], habits[0]["id"]))
+        con.commit()
+        with open(LOG, "a", encoding="utf-8") as f:
+            f.write(f"{datetime.utcnow().isoformat()} MISSION-LINK "
+                    f"habit={habits[0]['title']} -> goal={goals[0]['title']}\n")
+        print(json.dumps({"ok": True, "habit": habits[0]["title"],
+                          "goal": goals[0]["title"]}, ensure_ascii=False))
         return
 
     if args[0] not in ("expense", "income"):

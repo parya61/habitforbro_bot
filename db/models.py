@@ -86,6 +86,11 @@ class Habit(Base):
     status: Mapped[str] = mapped_column(String(16), default="active")
     created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
 
+    # Mission Control: жизненная цель (goals.level='life'), которую кормит привычка.
+    mission_id: Mapped[int | None] = mapped_column(
+        ForeignKey("goals.id"), nullable=True
+    )
+
     user: Mapped["User"] = relationship(back_populates="habits")
     logs: Mapped[list["HabitLog"]] = relationship(
         back_populates="habit", cascade="all, delete-orphan"

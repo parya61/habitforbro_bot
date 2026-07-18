@@ -262,6 +262,125 @@ async def _compute_behavior_features(session, user) -> str:
     return "\n".join(lines)
 
 
+async def _mission_health(session, user) -> str:
+    """Здоровье жизненных целей: что кормилось действиями за 7 дней, что голодает."""
+    from sqlalchemy import func as sa_func, select as sa_select
+
+    from db.models import Goal, Habit, HabitLog, TeaSession
+
+    today = date.today()
+    week_ago = today - timedelta(days=7)
+
+    res = await session.execute(
+        sa_select(Goal).where(
+            Goal.user_id == user.id, Goal.level == "life", Goal.status == "active"
+        )
+    )
+    life_goals = list(res.scalars().all())
+    if not life_goals:
+        return ""
+
+    lines = []
+    for g in life_goals:
+        res = await session.execute(
+            sa_select(sa_func.count(HabitLog.id))
+            .join(Habit, Habit.id == HabitLog.habit_id)
+            .where(
+                Habit.mission_id == g.id,
+                HabitLog.done.is_(True),
+                HabitLog.log_date > week_ago,
+            )
+        )
+        actions = res.scalar() or 0
+
+        # чайное дело кормится чайными сессиями
+        if actions == 0 and "чайн" in g.title.lower():
+            res = await session.execute(
+                sa_select(sa_func.count(TeaSession.id)).where(
+                    TeaSession.user_id == user.id,
+                    TeaSession.session_date > week_ago,
+                )
+            )
+            actions = res.scalar() or 0
+
+        if actions:
+            lines.append(f"«{g.title}» — {actions} действий за неделю ✅")
+        else:
+            lines.append(f"«{g.title}» — ГОЛОДАЕТ: ни одного действия за неделю")
+    return "Здоровье жизненных целей:\n" + "\n".join(f"  {l}" for l in lines)
+
+
+async def _gift_budget_forecast(session, user) -> str:
+    """Подарочный горизонт 90 дней: сколько откладывать в месяц."""
+    from db.gift_queries import list_persons
+    from services.gift import upcoming_birthdays
+
+    today = date.today()
+    persons = await list_persons(session, user.id)
+    bdays = upcoming_birthdays(persons, today, days_ahead=90)
+    if not bdays:
+        return ""
+
+    DEFAULT_GIFT = 2500
+    total = 0.0
+    names = []
+    for person, bdate, delta, age in bdays:
+        ideas = [g for g in (person.gifts or []) if g.status == "idea"]
+        est = max((g.price_estimate or 0) for g in ideas) if ideas else 0
+        est = est or DEFAULT_GIFT
+        total += est
+        names.append(f"{person.name} ({delta} дн, ~{est:,.0f}₽)".replace(",", " "))
+
+    monthly = total / 3
+    total_str = f"{total:,.0f}".replace(",", " ")
+    monthly_str = f"{monthly:,.0f}".replace(",", " ")
+    return (
+        f"Подарочный горизонт 90 дней: {len(bdays)} ДР — {', '.join(names[:6])}. "
+        f"Итого ~{total_str}₽, откладывать ~{monthly_str}₽/мес"
+    )
+
+
+async def _category_overspend(session, user) -> str:
+    """Категории, где текущий месяц заметно превышает среднее за 3 предыдущих."""
+    from sqlalchemy import func as sa_func, select as sa_select
+
+    from db.models import FinCategory, FinTransaction
+
+    today = date.today()
+    this_start = today.replace(day=1)
+    prev3_start = (this_start - timedelta(days=90)).replace(day=1)
+
+    async def cat_sums(start, end):
+        res = await session.execute(
+            sa_select(FinCategory.name, sa_func.sum(FinTransaction.amount))
+            .join(FinCategory, FinCategory.id == FinTransaction.category_id)
+            .where(
+                FinTransaction.user_id == user.id,
+                FinTransaction.tx_type == "expense",
+                FinTransaction.tx_date >= start,
+                FinTransaction.tx_date < end,
+                FinCategory.name != "Переводы",
+            )
+            .group_by(FinCategory.name)
+        )
+        return dict(res.all())
+
+    current = await cat_sums(this_start, today + timedelta(days=1))
+    past = await cat_sums(prev3_start, this_start)
+
+    warnings = []
+    day_frac = max(today.day / 30, 0.2)
+    for cat, cur in sorted(current.items(), key=lambda kv: -kv[1]):
+        avg_month = past.get(cat, 0) / 3
+        if avg_month >= 500 and cur > avg_month * day_frac * 1.5 and cur - avg_month * day_frac > 2000:
+            cur_s = f"{cur:,.0f}".replace(",", " ")
+            avg_s = f"{avg_month:,.0f}".replace(",", " ")
+            warnings.append(f"{cat}: уже {cur_s}₽ при среднем {avg_s}₽/мес")
+    if not warnings:
+        return ""
+    return "Перерасход категорий: " + "; ".join(warnings[:3])
+
+
 async def _weekly_report() -> None:
     from aiogram.types import InlineKeyboardButton, InlineKeyboardMarkup
 
@@ -281,21 +400,30 @@ async def _weekly_report() -> None:
             if user.telegram_id == config.admin_id:
                 # единый мозг: разбор для Максима делает сама Керя —
                 # с её памятью, философией и живым доступом к данным
+                missions = await _mission_health(session, user)
+                gift_budget = await _gift_budget_forecast(session, user)
+                overspend = await _category_overspend(session, user)
+                extra = "\n".join(x for x in (missions, gift_budget, overspend) if x)
+
                 kerya_prompt = (
                     "Служебная задача: воскресный разбор недели для Максима. "
                     "Твой ответ будет отправлен ему в бота как есть — пиши "
                     "сразу текст разбора, без преамбул.\n\n"
                     "ВЫЧИСЛЕННЫЕ ЗАКОНОМЕРНОСТИ (точные цифры, доверяй им):\n"
                     f"{features}\n\n"
+                    f"{extra}\n\n"
                     "План разбора:\n"
                     "1. Что получилось — похвали конкретно (habits-query habits, "
                     "goals, diary — посмотри сам)\n"
                     "2. Провалы и спады — используй закономерности выше\n"
-                    "3. 2-3 совета на следующую неделю, опираясь на цифры\n"
-                    "4. Серии под защитой — предупреди о рисках\n"
-                    "5. Одной строкой соотнеси неделю с PHILOSOPHY.md — "
+                    "3. Если какая-то жизненная цель ГОЛОДАЕТ — скажи об этом "
+                    "прямо и предложи одно конкретное действие на неделю\n"
+                    "4. Подарочный горизонт и перерасход категорий — одной "
+                    "строкой каждое, если данные есть\n"
+                    "5. 2-3 совета на следующую неделю, опираясь на цифры\n"
+                    "6. Одной строкой соотнеси неделю с PHILOSOPHY.md — "
                     "приближался ли к тому, кем хочет стать\n"
-                    "Коротко, по-дружески, до 1500 символов."
+                    "Коротко, по-дружески, до 1800 символов."
                 )
                 kerya_text = await ask_kerya(kerya_prompt)
 
