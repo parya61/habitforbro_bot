@@ -105,28 +105,43 @@ body::after {
 
 .hero-inner { position: relative; z-index: 2; width: 100%; }
 
-/* Glitch wordmark */
+/* Glitch wordmark — per-letter reactive */
 .wordmark {
   font-family: var(--sans);
   font-weight: 600;
   font-size: clamp(2.6rem, 12vw, 9rem);
   letter-spacing: -0.02em;
   line-height: 1;
-  display: inline-block;
+  display: inline-flex;
   position: relative;
   cursor: default;
-  --gx: 0; --gy: 0; --gi: 0;
-  transition: filter .55s cubic-bezier(.23,1,.32,1), letter-spacing .55s cubic-bezier(.23,1,.32,1);
-  filter: blur(calc(var(--gi) * 1.1px));
-  letter-spacing: calc(-0.02em + var(--gi) * 0.012em);
-  text-shadow:
-    calc(var(--gx) * -1px) calc(var(--gy) * -1px) calc(var(--gi) * 6px) rgba(255,64,64, calc(var(--gi) * .55)),
-    calc(var(--gx) * 1px)  calc(var(--gy) * 1px)  calc(var(--gi) * 6px) rgba(64,140,255, calc(var(--gi) * .5)),
-    calc(var(--gx) * .5px) calc(var(--gy) * -1.4px) calc(var(--gi) * 8px) rgba(255,214,92, calc(var(--gi) * .42));
-  opacity: 0;
-  animation: markIn 1s .15s cubic-bezier(.23,1,.32,1) forwards;
+  user-select: none; -webkit-user-select: none;
 }
-@keyframes markIn { from { opacity:0; filter: blur(14px); transform: translateY(16px); } to { opacity:1; filter: blur(0); transform:none; } }
+/* outer: intro only (measured for cursor distance — never transformed after intro) */
+.wordmark .ch {
+  display: inline-block;
+  opacity: 0;
+  animation: chIn .85s cubic-bezier(.23,1,.32,1) forwards;
+  animation-delay: var(--d, 0s);
+}
+@keyframes chIn {
+  from { opacity: 0; transform: translateY(22px); filter: blur(12px); }
+  to   { opacity: 1; transform: none;             filter: blur(0); }
+}
+/* inner: cursor interaction */
+.wordmark .chi {
+  display: inline-block;
+  transform: translate3d(var(--dx,0px), var(--dy,0px), 0) scale(var(--sc,1));
+  filter: blur(calc(var(--i,0) * 1px));
+  text-shadow:
+    calc(var(--i,0) * -5px) calc(var(--i,0) * -2px) calc(var(--i,0) * 8px)  rgba(255,64,64,  calc(var(--i,0) * .62)),
+    calc(var(--i,0) *  5px) calc(var(--i,0) *  2px) calc(var(--i,0) * 8px)  rgba(64,140,255, calc(var(--i,0) * .56)),
+    calc(var(--i,0) *  1px) calc(var(--i,0) * -6px) calc(var(--i,0) * 11px) rgba(255,214,92, calc(var(--i,0) * .46));
+  transition:
+    transform .38s cubic-bezier(.23,1,.32,1),
+    filter .45s cubic-bezier(.23,1,.32,1),
+    text-shadow .45s cubic-bezier(.23,1,.32,1);
+}
 
 .scroll-hint {
   margin-top: 28px;
@@ -411,7 +426,8 @@ body::after {
 }
 @media (prefers-reduced-motion: reduce) {
   .sr { animation: none; opacity: 1; transform: none; }
-  .wordmark { animation: none; opacity: 1; }
+  .wordmark .ch { animation: none; opacity: 1; }
+  .wordmark .chi { transition: none; }
   .scroll-hint, .scroll-hint::after { animation: none; opacity: 1; }
   .glow { animation: none; }
   .btn { animation: none; }
@@ -437,7 +453,9 @@ body::after {
 <section class="hero">
   <div class="glow g1"></div><div class="glow g2"></div><div class="glow g3"></div>
   <div class="hero-inner">
-    <h1 class="wordmark" id="wordmark">SOVANISOVA</h1>
+    <h1 class="wordmark" id="wordmark" aria-label="SOVANISOVA">
+      <span class="ch" style="--d:.10s" aria-hidden="true"><span class="chi">S</span></span><span class="ch" style="--d:.15s" aria-hidden="true"><span class="chi">O</span></span><span class="ch" style="--d:.20s" aria-hidden="true"><span class="chi">V</span></span><span class="ch" style="--d:.25s" aria-hidden="true"><span class="chi">A</span></span><span class="ch" style="--d:.30s" aria-hidden="true"><span class="chi">N</span></span><span class="ch" style="--d:.35s" aria-hidden="true"><span class="chi">I</span></span><span class="ch" style="--d:.40s" aria-hidden="true"><span class="chi">S</span></span><span class="ch" style="--d:.45s" aria-hidden="true"><span class="chi">O</span></span><span class="ch" style="--d:.50s" aria-hidden="true"><span class="chi">V</span></span><span class="ch" style="--d:.55s" aria-hidden="true"><span class="chi">A</span></span>
+    </h1>
     <p class="scroll-hint">scroll to explore</p>
   </div>
 </section>
@@ -649,19 +667,54 @@ lnk.querySelectorAll('a').forEach(function(a){
   a.addEventListener('click', function(){ tog.classList.remove('active'); lnk.classList.remove('open'); document.body.style.overflow=''; });
 });
 
-/* ---------- WORDMARK RGB GLITCH ---------- */
+/* ---------- WORDMARK: per-letter cursor interaction ---------- */
 var wm = document.getElementById('wordmark');
-if (wm && matchMedia('(pointer: fine)').matches) {
-  wm.addEventListener('mousemove', function(e){
-    var r = wm.getBoundingClientRect();
-    var dx = (e.clientX - (r.left + r.width/2)) / (r.width/2);
-    var dy = (e.clientY - (r.top + r.height/2)) / (r.height/2);
-    wm.style.setProperty('--gx', (dx*3.2).toFixed(2));
-    wm.style.setProperty('--gy', (dy*2.4).toFixed(2));
-    wm.style.setProperty('--gi', '1');
-  });
-  wm.addEventListener('mouseleave', function(){
-    wm.style.setProperty('--gx','0'); wm.style.setProperty('--gy','0'); wm.style.setProperty('--gi','0');
+if (wm && matchMedia('(pointer: fine)').matches && !matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  var outers = [].slice.call(wm.querySelectorAll('.ch'));
+  var inners = outers.map(function(o){ return o.firstElementChild; });
+  var hero = wm.closest('.hero');
+  var mx = 0, my = 0, near = false, wmRaf = false, bursting = false;
+  var RADIUS = 300;   // зона влияния курсора, px
+
+  function paintLetters(){
+    wmRaf = false;
+    if (bursting) return;
+    for (var i = 0; i < outers.length; i++) {
+      // меряем ВНЕШНИЙ span: он не трансформируется, поэтому нет самовозбуждения
+      var r = outers[i].getBoundingClientRect();
+      var dx = (r.left + r.width / 2) - mx;
+      var dy = (r.top + r.height / 2) - my;
+      var dist = Math.sqrt(dx * dx + dy * dy);
+      var f = near ? Math.max(0, 1 - dist / RADIUS) : 0;
+      f = f * f;                                  // мягкий спад к краям зоны
+      var ang = Math.atan2(dy, dx);
+      var push = f * 24;                          // буквы расступаются от курсора
+      var s = inners[i].style;
+      s.setProperty('--dx', (Math.cos(ang) * push).toFixed(2) + 'px');
+      s.setProperty('--dy', (Math.sin(ang) * push - f * 9).toFixed(2) + 'px');
+      s.setProperty('--sc', (1 + f * 0.09).toFixed(3));
+      s.setProperty('--i',  f.toFixed(3));
+    }
+  }
+  function queuePaint(){ if (!wmRaf) { wmRaf = true; requestAnimationFrame(paintLetters); } }
+
+  hero.addEventListener('mousemove', function(e){
+    mx = e.clientX; my = e.clientY; near = true; queuePaint();
+  }, {passive:true});
+  hero.addEventListener('mouseleave', function(){ near = false; queuePaint(); });
+  addEventListener('scroll', function(){ if (near) queuePaint(); }, {passive:true});
+
+  // клик по надписи — короткая RGB-вспышка, потом плавный возврат
+  wm.addEventListener('click', function(){
+    bursting = true;
+    inners.forEach(function(el){
+      var s = el.style;
+      s.setProperty('--dx', ((Math.random() - .5) * 26).toFixed(1) + 'px');
+      s.setProperty('--dy', ((Math.random() - .5) * 18).toFixed(1) + 'px');
+      s.setProperty('--sc', (1 + Math.random() * .1).toFixed(3));
+      s.setProperty('--i', '1');
+    });
+    setTimeout(function(){ bursting = false; paintLetters(); }, 420);
   });
 }
 
