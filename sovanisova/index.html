@@ -485,7 +485,7 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
     <div class="shead rv"><span class="sidx">01</span><span class="slabel scr">Что я создаю</span></div>
 
     <div class="crow">
-      <div class="cmedia tilt" data-px="-1"><video autoplay muted loop playsinline><source src="video-reel.mp4?v=7" type="video/mp4"></video></div>
+      <div class="cmedia tilt" data-px="-1"><video muted loop playsinline preload="none"><source src="video-reel.mp4?v=7" type="video/mp4"></video></div>
       <div class="ctext" data-px="1">
         <p class="cnum rv">01</p>
         <p class="cphrase rl">Кадр, который<br>невозможно пролистать</p>
@@ -493,7 +493,7 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
     </div>
 
     <div class="crow flip">
-      <div class="cmedia tilt" data-px="1"><video autoplay muted loop playsinline><source src="video-ai-demo.mp4?v=7" type="video/mp4"></video></div>
+      <div class="cmedia tilt" data-px="1"><video muted loop playsinline preload="none"><source src="video-ai-demo.mp4?v=7" type="video/mp4"></video></div>
       <div class="ctext" data-px="-1">
         <p class="cnum rv">02</p>
         <p class="cphrase rl">Ритм, который<br>ведёт зрителя</p>
@@ -601,46 +601,76 @@ var FINE    = matchMedia('(pointer: fine)').matches;
 var root    = document.documentElement;
 
 /* ================= DATA ================= */
-var V1 = 'video-ai-demo.mp4?v=7', V2 = 'video-reel.mp4?v=7';
 function grad(a,b){ return 'linear-gradient(160deg,'+a+' 0%,#0e2a20 55%,'+b+' 100%)'; }
+/* w('hybrid',1) -> works/hybrid-01.mp4 + постер works/hybrid-01.jpg */
+function w(cat, n){
+  var s = 'works/' + cat + '-' + (n < 10 ? '0' + n : n);
+  return { media: s + '.mp4', poster: s + '.jpg' };
+}
+function mix(base, extra){ for (var k in extra) base[k] = extra[k]; return base; }
 
 var CATS = [
   { id:'hybrid', title:'HYBRID AI', sub:'REAL FOOTAGE + AI ENHANCEMENT',
     desc:'Реальная съёмка, дополненная искусственным интеллектом, VFX и цифровыми элементами.',
     items:[
-      { name:'THE APOLOGY',  cat:'HYBRID AI STORY',       media:V1, desc:'Эмоциональный сюжетный ролик на основе реальной съёмки с добавлением AI-объектов. Работа с визуальной метафорой, генерацией элементов и интеграцией AI в живой кадр.' },
-      { name:'INNER LIGHT',  cat:'HYBRID AI VFX',         media:V2, desc:'Создание нового мира вокруг реального персонажа. Работа с AI-локациями, освещением и визуальными эффектами.' },
-      { name:'INNER VOICES', cat:'HYBRID AI CHARACTER',   bg:grad('rgba(211,150,140,.16)','rgba(58,138,158,.14)'), desc:'Визуализация внутреннего конфликта через AI-персонажей.' },
-      { name:'SERPENT',      cat:'HYBRID AI VFX',         bg:grad('rgba(131,153,88,.18)','rgba(11,32,24,.9)'),     desc:'Интеграция цифрового существа в реальную съёмку.' },
-      { name:'ACHIEVEMENTS', cat:'HYBRID AI ENVIRONMENT', bg:grad('rgba(211,150,140,.12)','rgba(131,153,88,.16)'), desc:'Расширение реального кадра с помощью AI-среды.' },
-      { name:'PREDATORS',    cat:'HYBRID AI STORY',       bg:grad('rgba(58,138,158,.16)','rgba(211,150,140,.1)'),  desc:'AI как инструмент визуальной метафоры.' },
+      mix(w('hybrid',1), { name:'THE APOLOGY',  cat:'HYBRID AI STORY',     desc:'Эмоциональный сюжетный ролик на основе реальной съёмки с добавлением AI-объектов. Работа с визуальной метафорой, генерацией элементов и интеграцией AI в живой кадр.' }),
+      mix(w('hybrid',2), { name:'INNER LIGHT',  cat:'HYBRID AI VFX',       desc:'Создание нового мира вокруг реального персонажа. Работа с AI-локациями, освещением и визуальными эффектами.' }),
+      mix(w('hybrid',3), { name:'INNER VOICES', cat:'HYBRID AI CHARACTER', desc:'Визуализация внутреннего конфликта через AI-персонажей.' }),
+      mix(w('hybrid',4), { name:'SERPENT',      cat:'HYBRID AI VFX',       desc:'Интеграция цифрового существа в реальную съёмку.' }),
+      mix(w('hybrid',5), { name:'ACHIEVEMENTS', cat:'HYBRID AI ENVIRONMENT', desc:'Расширение реального кадра с помощью AI-среды.' }),
+      mix(w('hybrid',6), { name:'PREDATORS',    cat:'HYBRID AI STORY',     desc:'AI как инструмент визуальной метафоры.' }),
       { name:'INNER HAND',   cat:'HYBRID AI VFX',         bg:grad('rgba(90,154,111,.18)','rgba(211,150,140,.12)'), desc:'Создание фантастического элемента внутри реального мира.' }
     ]},
   { id:'fullai', title:'FULL AI', sub:'AI CINEMATIC PRODUCTION',
     desc:'Полностью созданные с помощью искусственного интеллекта проекты: от идеи и сценария до генерации кадров, персонажей, анимации и финального монтажа.',
     items:[
-      { name:'MEMORY EXCHANGE',  cat:'FULL AI SHORT FILM',   media:V2, desc:'Полностью созданный с помощью AI короткометражный фильм о ценности воспоминаний. Демонстрирует разработку идеи, сценария, визуального мира и драматургии.' },
-      { name:'COCA-COLA SPEC',   cat:'FULL AI PRODUCT FILM', media:V1, desc:'Концептуальный рекламный ролик продукта, созданный полностью через AI.' },
-      { name:'EYEWEAR SPEC',     cat:'FULL AI PRODUCT FILM', bg:grad('rgba(211,150,140,.16)','rgba(131,153,88,.12)'), desc:'AI-концепт рекламы аксессуара.' },
-      { name:'SUMMER OF 2017',   cat:'FULL AI CINEMATIC',    bg:grad('rgba(255,214,92,.12)','rgba(211,150,140,.14)'),  desc:'История о воспоминаниях и юности.' },
-      { name:'ANIME DREAM',      cat:'AI ANIMATION',         bg:grad('rgba(58,138,158,.18)','rgba(211,150,140,.12)'),  desc:'Аниме-стилистика: девушка и мотоцикл.' },
+      mix(w('fullai',1), { name:'MEMORY EXCHANGE', cat:'FULL AI SHORT FILM',   desc:'Полностью созданный с помощью AI короткометражный фильм о ценности воспоминаний. Демонстрирует разработку идеи, сценария, визуального мира и драматургии.' }),
+      mix(w('fullai',2), { name:'COCA-COLA SPEC',  cat:'FULL AI PRODUCT FILM', desc:'Концептуальный рекламный ролик продукта, созданный полностью через AI.' }),
+      mix(w('fullai',3), { name:'EYEWEAR SPEC',    cat:'FULL AI PRODUCT FILM', desc:'AI-концепт рекламы аксессуара.' }),
+      mix(w('fullai',4), { name:'SUMMER OF 2017',  cat:'FULL AI CINEMATIC',    desc:'История о воспоминаниях и юности.' }),
+      mix(w('fullai',5), { name:'ANIME DREAM',     cat:'AI ANIMATION',         desc:'Аниме-стилистика: девушка и мотоцикл.' }),
       { name:'BERSEK INSPIRED',  cat:'AI CINEMATIC WORLD',   bg:grad('rgba(131,153,88,.2)','rgba(11,32,24,.9)'),       desc:'Поле и огромный замок — построение кинематографичного мира.' },
       { name:'MOTORCYCLE DREAM', cat:'AI STORY CONCEPT',     bg:grad('rgba(90,154,111,.16)','rgba(58,138,158,.12)'),   desc:'История встречи с мотоциклом после зимы.' }
     ]},
   { id:'cinema', title:'CINEMATIC PRODUCTION', sub:'CINEMATIC STORYTELLING',
     desc:'Кинематографичные ролики без использования AI. Работа с режиссурой, съёмкой, светом, монтажом и эмоциональным повествованием.',
     items:[
-      { name:'BROKEN WINGS', cat:'CINEMATIC STORY',      media:V2, desc:'Выбор стабильной работы вместо творчества. История внутреннего конфликта и поиска себя.' },
-      { name:'WHITE NOISE',  cat:'CINEMATIC SHORT FILM', bg:grad('rgba(247,244,213,.1)','rgba(11,32,24,.95)'),    desc:'Девушка смотрит телевизор с белым шумом. История о невозможности отпустить прошлое.' },
-      { name:'NOT TODAY',    cat:'CINEMATIC STORY',      bg:grad('rgba(58,138,158,.14)','rgba(11,32,24,.95)'),    desc:'Тёмный силуэт и момент выбора.' },
-      { name:'CHILDHOOD',    cat:'EMOTIONAL SHORT',      bg:grad('rgba(211,150,140,.16)','rgba(131,153,88,.12)'), desc:'Детство и взрослая героиня — переход сквозь время.' },
-      { name:'AUTUMN',       cat:'VISUAL STORY',         bg:grad('rgba(255,214,92,.14)','rgba(131,153,88,.16)'),  desc:'Лист, бабочка, конец лета.' }
+      mix(w('cinema',1), { name:'BROKEN WINGS', cat:'CINEMATIC STORY',      desc:'Выбор стабильной работы вместо творчества. История внутреннего конфликта и поиска себя.' }),
+      mix(w('cinema',2), { name:'WHITE NOISE',  cat:'CINEMATIC SHORT FILM', desc:'Девушка смотрит телевизор с белым шумом. История о невозможности отпустить прошлое.' }),
+      mix(w('cinema',3), { name:'NOT TODAY',    cat:'CINEMATIC STORY',      desc:'Тёмный силуэт и момент выбора.' }),
+      mix(w('cinema',4), { name:'CHILDHOOD',    cat:'EMOTIONAL SHORT',      desc:'Детство и взрослая героиня — переход сквозь время.' }),
+      mix(w('cinema',5), { name:'AUTUMN',       cat:'VISUAL STORY',         desc:'Лист, бабочка, конец лета.' })
     ]}
 ];
 
-function mediaHTML(it){
-  if (it.media) return '<video autoplay muted loop playsinline><source src="'+it.media+'" type="video/mp4"></video>';
-  return '<div class="ph" style="background:'+it.bg+'"></div>';
+/* video — играющий ролик; still — только кадр-постер (дёшево для боковых слотов) */
+function mediaHTML(it, mode){
+  if (!it.media) return '<div class="ph" style="background:'+it.bg+'"></div>';
+  if (mode === 'still') {
+    return it.poster
+      ? '<img class="ph" src="'+it.poster+'" alt="" loading="lazy" decoding="async">'
+      : '<div class="ph" style="background:'+(it.bg||'#0e2a20')+'"></div>';
+  }
+  return '<video muted loop playsinline preload="none"'
+       + (it.poster ? ' poster="'+it.poster+'"' : '')
+       + '><source src="'+it.media+'" type="video/mp4"></video>';
+}
+
+/* воспроизводим только то, что реально на экране */
+var vidIO = ('IntersectionObserver' in window) ? new IntersectionObserver(function(es){
+  es.forEach(function(e){
+    var v = e.target;
+    if (e.isIntersecting) { if (v.preload === 'none') v.preload = 'auto'; v.play().catch(function(){}); }
+    else v.pause();
+  });
+}, { threshold: .2 }) : null;
+
+function watchVideos(scope){
+  if (!vidIO) return;
+  (scope || document).querySelectorAll('video[preload="none"], video[data-io]').forEach(function(v){
+    if (v.dataset.io) return;
+    v.dataset.io = '1'; vidIO.observe(v);
+  });
 }
 
 /* ================= TEXT SCRAMBLE ================= */
@@ -958,8 +988,8 @@ CATS.forEach(function(cat, ci){
   card.className = 'wcard rv';
   card.innerHTML =
     '<div class="wstack">' +
-      '<div class="wslot left">'  + mediaHTML(pick[0]) + '</div>' +
-      '<div class="wslot right">' + mediaHTML(pick[2]) + '</div>' +
+      '<div class="wslot left">'  + mediaHTML(pick[0], 'still') + '</div>' +
+      '<div class="wslot right">' + mediaHTML(pick[2], 'still') + '</div>' +
       '<div class="wslot mid">'   + mediaHTML(pick[1]) + '</div>' +
       '<span class="wcount">' + cat.items.length + ' работ</span>' +
     '</div>' +
@@ -971,6 +1001,7 @@ CATS.forEach(function(cat, ci){
   stacks.push(card.querySelector('.wstack'));
   if (!REDUCED) card.addEventListener('mouseenter', function(){ scramble(card.querySelector('.wtitle'), 450); });
 });
+watchVideos(document);
 
 (function(){
   if (!FINE || REDUCED) return;
@@ -998,7 +1029,9 @@ function renderGal(anim){
   galMain.classList.remove('swap');
   if (anim) { void galMain.offsetWidth; galMain.classList.add('swap'); }
   var p = items[cix - 1], n = items[cix + 1];
-  galL.innerHTML = p ? mediaHTML(p) : ''; galR.innerHTML = n ? mediaHTML(n) : '';
+  galL.innerHTML = p ? mediaHTML(p, 'still') : ''; galR.innerHTML = n ? mediaHTML(n, 'still') : '';
+  var mv = galMain.querySelector('video');
+  if (mv) { mv.preload = 'auto'; mv.play().catch(function(){}); }
   galL.classList.toggle('empty', !p); galR.classList.toggle('empty', !n);
   galIdx.textContent = String(cix + 1).padStart(2, '0') + ' / ' + String(items.length).padStart(2, '0');
   galName.textContent = it.name; galSub.textContent = it.cat; galDesc.textContent = it.desc;
