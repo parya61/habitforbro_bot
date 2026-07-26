@@ -77,10 +77,10 @@ body.loaded .pre-inner { opacity: 0; }
 .no-js .pre { display: none; }
 
 /* сова в кольце прогресса, дышит и моргает */
-.pre-owl { position: relative; width: clamp(150px, 34vw, 230px); margin: 0 auto 26px; }
-.pre-owl .owl { width: 68%; margin: 0 auto; animation: owlBreath 2.8s ease-in-out infinite; }
+.pre-owl { position: relative; width: clamp(150px, 34vw, 230px); aspect-ratio: 1; margin: 0 auto 26px; display: grid; place-items: center; }
+.pre-owl .owl { width: 72%; grid-area: 1 / 1; animation: owlBreath 2.8s ease-in-out infinite; }
 @keyframes owlBreath { 0%,100% { transform: scale(1) translateY(0); } 50% { transform: scale(1.045) translateY(-3px); } }
-.pre-owl .halo { position: absolute; inset: 0; transform: rotate(-90deg); overflow: visible; }
+.pre-owl .halo { position: absolute; inset: 0; width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; }
 .pre-owl .halo circle { fill: none; stroke-width: 1.1; }
 .pre-owl .halo .trk { stroke: rgba(247,244,213,.1); }
 .pre-owl .halo .bar { stroke: var(--accent); stroke-linecap: round; stroke-dasharray: 301.6; stroke-dashoffset: calc(301.6 * (1 - var(--p, 0))); transition: stroke-dashoffset .2s linear; filter: drop-shadow(0 0 6px rgba(211,150,140,.55)); }
@@ -129,10 +129,10 @@ body.loaded .pre-inner { opacity: 0; }
   padding: calc(58px + 3vh) var(--pad) clamp(20px, 4vh, 40px);
   position: relative; overflow: hidden;
 }
-.glow { position: absolute; border-radius: 50%; pointer-events: none; filter: blur(90px); will-change: transform; }
-.g1 { width: 520px; height: 520px; background: rgba(211,150,140,.1); top: -12%; right: -6%; animation: f1 20s ease-in-out infinite; }
-.g2 { width: 420px; height: 420px; background: rgba(131,153,88,.09); bottom: -10%; left: -8%; animation: f2 24s ease-in-out infinite; }
-.g3 { width: 320px; height: 320px; background: rgba(58,138,158,.07); top: 45%; left: 48%; animation: f3 18s ease-in-out infinite; }
+.glow { position: absolute; border-radius: 50%; pointer-events: none; filter: blur(52px); will-change: transform; }
+.g1 { width: 420px; height: 420px; background: rgba(211,150,140,.1); top: -12%; right: -6%; animation: f1 20s ease-in-out infinite; }
+.g2 { width: 340px; height: 340px; background: rgba(131,153,88,.09); bottom: -10%; left: -8%; animation: f2 24s ease-in-out infinite; }
+.g3 { width: 260px; height: 260px; background: rgba(58,138,158,.07); top: 45%; left: 48%; animation: f3 18s ease-in-out infinite; }
 @keyframes f1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-30px,20px)} }
 @keyframes f2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(22px,-26px)} }
 @keyframes f3 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-16px,-20px)} }
@@ -207,22 +207,26 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
 .crow:last-child { margin-bottom: 0; }
 .crow.flip { grid-template-columns: .85fr 1.15fr; }
 .crow.flip .cmedia { order: 2; } .crow.flip .ctext { order: 1; }
-.cmedia { position: relative; width: 100%; aspect-ratio: 16/10; will-change: transform; transform: perspective(1000px) translateY(var(--py,0px)) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)); }
-/* кадр обрезается подвижной границей: при скролле текст «съедает» видео и отпускает обратно */
+.cmedia { position: relative; width: 100%; aspect-ratio: 16/10; will-change: transform; transform: translate3d(0, var(--py,0px), 0) perspective(1000px) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)); }
 .cmedia .frame {
   position: absolute; inset: 0; border-radius: 10px; overflow: hidden; background: var(--bg2);
   box-shadow: 0 24px 60px rgba(0,0,0,.32), 0 0 0 1px rgba(131,153,88,.12);
-  clip-path: inset(0 var(--clipR, 0%) 0 var(--clipL, 0%) round 10px);
 }
 .cmedia video, .cmedia .ph { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.06); }
 .cmedia .frame::after { content:''; position:absolute; inset:0; background: linear-gradient(120deg, rgba(11,32,24,.34), transparent 60%); }
-/* светящаяся кромка ровно на линии среза */
-.cmedia .edge {
-  position: absolute; top: -2%; bottom: -2%; width: 2px; z-index: 3; pointer-events: none;
-  left: var(--edge, 100%); opacity: var(--edgeOn, 0);
-  background: linear-gradient(to bottom, transparent, var(--accent), transparent);
-  box-shadow: 0 0 18px 3px rgba(211,150,140,.45);
+/* «съедающая» панель едет трансформом — это composite-слой, без перерисовки кадра */
+.cmedia .cover {
+  position: absolute; inset: 0; z-index: 2; background: var(--bg); pointer-events: none;
+  transform: translate3d(var(--cov, 100%), 0, 0); will-change: transform;
 }
+.cmedia .cover::before {
+  content: ''; position: absolute; top: -3%; bottom: -3%; width: 2px;
+  background: linear-gradient(to bottom, transparent, var(--accent), transparent);
+  box-shadow: 0 0 18px 3px rgba(211,150,140,.4);
+  opacity: var(--edgeOn, 0);
+}
+.cmedia.from-right .cover::before { left: 0; }
+.cmedia.from-left  .cover::before { right: 0; }
 .ctext { will-change: transform; transform: translateY(var(--py,0px)); }
 .cnum { font-family: var(--serif); font-size: 1.05rem; color: var(--organic); letter-spacing: .1em; margin-bottom: 13px; }
 .cphrase { font-family: var(--serif); font-weight: 300; font-size: var(--t-h2); line-height: 1.22; }
@@ -241,7 +245,7 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
 }
 .wslot img, .wslot video { width: 100%; height: 100%; object-fit: cover; }
 .wslot video { position: absolute; inset: 0; opacity: 0; transition: opacity .4s; }
-.wslot.m.live video { opacity: 1; }
+.wslot.live video { opacity: 1; }
 .wslot.l { transform: translateX(-46%) rotate(-7deg) scale(.87); z-index: 1; filter: brightness(.58); animation: bobA 7s ease-in-out infinite; }
 .wslot.r { transform: translateX(46%)  rotate(7deg)  scale(.87); z-index: 1; filter: brightness(.58); animation: bobB 8s ease-in-out infinite; }
 .wslot.m { transform: translateY(-2%); z-index: 3; animation: bobC 6s ease-in-out infinite; }
@@ -534,13 +538,13 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
   <div class="container">
     <p class="slabel rv">Что я создаю</p>
     <div class="crow">
-      <div class="cmedia tilt" data-px="-1"><div class="frame"><video muted loop playsinline preload="none"><source src="works/hybrid-02-p.mp4" type="video/mp4"></video></div><i class="edge"></i></div><div class="ctext" data-px="1"><p class="cnum rv">01</p><p class="cphrase rl">Кадр, который<br>невозможно пролистать</p></div>
+      <div class="cmedia tilt from-right" data-px="-1"><div class="frame"><video muted loop playsinline preload="none"><source src="works/hybrid-02-p.mp4" type="video/mp4"></video></div><i class="cover"></i></div><div class="ctext" data-px="1"><p class="cnum rv">01</p><p class="cphrase rl">Кадр, который<br>невозможно пролистать</p></div>
     </div>
     <div class="crow flip">
-      <div class="cmedia tilt" data-px="1"><div class="frame"><video muted loop playsinline preload="none"><source src="works/fullai-03-p.mp4" type="video/mp4"></video></div><i class="edge"></i></div><div class="ctext" data-px="-1"><p class="cnum rv">02</p><p class="cphrase rl">Ритм, который<br>ведёт зрителя</p></div>
+      <div class="cmedia tilt from-left" data-px="1"><div class="frame"><video muted loop playsinline preload="none"><source src="works/fullai-03-p.mp4" type="video/mp4"></video></div><i class="cover"></i></div><div class="ctext" data-px="-1"><p class="cnum rv">02</p><p class="cphrase rl">Ритм, который<br>ведёт зрителя</p></div>
     </div>
     <div class="crow">
-      <div class="cmedia tilt" data-px="-1"><div class="frame"><video muted loop playsinline preload="none"><source src="works/cinema-04-p.mp4" type="video/mp4"></video></div><i class="edge"></i></div><div class="ctext" data-px="1"><p class="cnum rv">03</p><p class="cphrase rl">Идея, которая<br>остаётся в памяти</p></div>
+      <div class="cmedia tilt from-right" data-px="-1"><div class="frame"><video muted loop playsinline preload="none"><source src="works/cinema-04-p.mp4" type="video/mp4"></video></div><i class="cover"></i></div><div class="ctext" data-px="1"><p class="cnum rv">03</p><p class="cphrase rl">Идея, которая<br>остаётся в памяти</p></div>
     </div>
   </div>
 </section>
@@ -810,13 +814,13 @@ addEventListener('scroll', function(){
 var dust = (function(){
   var cv = document.getElementById('dust');
   if (REDUCED) { cv.style.display = 'none'; return null; }
-  var ctx = cv.getContext('2d'), W=0, H=0, dpr = Math.min(2, devicePixelRatio||1), P=[];
+  var ctx = cv.getContext('2d', { alpha: true }), W=0, H=0, dpr = Math.min(1.5, devicePixelRatio||1), P=[];
   function size(){
     W = innerWidth; H = innerHeight;
     cv.width = W*dpr; cv.height = H*dpr;
     cv.style.width = W+'px'; cv.style.height = H+'px';
     ctx.setTransform(dpr,0,0,dpr,0,0);
-    var n = Math.round(Math.max(60, Math.min(220, (W*H)/9000)));
+    var n = Math.round(Math.max(40, Math.min(110, (W*H)/18000)));
     P = [];
     for (var i=0;i<n;i++) P.push({ x:Math.random()*W, y:Math.random()*H, r:Math.random()*2+.4,
       vx:(Math.random()-.5)*.34, vy:-(Math.random()*.36+.07), a:Math.random()*.5+.16,
@@ -825,6 +829,7 @@ var dust = (function(){
   size(); addEventListener('resize', size);
 
   return function(t){
+    if (document.hidden) return;
     ctx.clearRect(0,0,W,H);
     var boost = sv;                       /* 0..1 — насколько быстро сейчас листают */
     for (var i=0;i<P.length;i++){
@@ -863,66 +868,115 @@ var pxEls  = [].slice.call(document.querySelectorAll('[data-px]'));
 var wipes  = [].slice.call(document.querySelectorAll('.cmedia')).map(function(el, i){
   return { el: el, frame: el.querySelector('.frame'), edge: el.querySelector('.edge'), dir: i % 2 ? -1 : 1 };
 });
+/* состояние держим в объектах, а не в data-атрибутах: запись в DOM на каждом кадре дорогая */
+var pxState = pxEls.map(function(el){
+  var isText = el.classList.contains('ctext');
+  return { el: el, k: parseFloat(el.dataset.px) || 1, cur: 0, target: 0,
+           lerp: isText ? .055 : .16,   /* текст догоняет медленнее — тянется следом за кадром */
+           last: null, live: false };
+});
+var wipeState = wipes.map(function(W){ return { el: W.el, cover: W.el.querySelector('.cover'), cur: 1, target: 1, last: null, lastEdge: null, live: false }; });
+var tiltState = tilts.map(function(el){ return { el: el, rx: 0, ry: 0, trx: 0, tryy: 0, last: null, live: false }; });
+var lastSv = -1;
+
+/* пока первый экран не виден — буквы вообще не считаем */
+var heroVisible = true;
+new IntersectionObserver(function(es){ heroVisible = es[0].isIntersecting; }, { threshold: 0 }).observe(heroEl);
+
 function master(t){
   if (!REDUCED) {
-    for (var i=0;i<LETTERS.length;i++){
-      var L = LETTERS[i];
-      var idleY = Math.sin(t*.0011 + L.i*.55)*3.4, idleX = Math.cos(t*.0008 + L.i*.42)*1.7;
-      var tx=0, ty=0, tsc=1, tgi=L.tgi;
-      if (mouse.inHero) {
-        var r = L.outer.getBoundingClientRect();
-        var dx = (r.left+r.width/2)-mouse.x, dy = (r.top+r.height/2)-mouse.y;
-        var f = Math.max(0, 1 - Math.sqrt(dx*dx+dy*dy)/300); f *= f;
-        if (f > 0) { var a = Math.atan2(dy,dx); tx = Math.cos(a)*f*26; ty = Math.sin(a)*f*26 - f*10; tsc = 1+f*.1; tgi = Math.max(tgi,f); }
-      }
-      L.dx += (tx-L.dx)*.12; L.dy += (ty-L.dy)*.12; L.sc += (tsc-L.sc)*.12; L.gi += (tgi-L.gi)*.1; L.tgi *= .94;
-      var g = L.gi;
-      L.inner.style.transform = 'translate3d(' + (L.dx+idleX).toFixed(2) + 'px,' + (L.dy+idleY).toFixed(2) + 'px,0) scale(' + L.sc.toFixed(3) + ')';
-      L.inner.style.filter = g > .01 ? 'blur(' + (g*1.1).toFixed(2) + 'px)' : '';
-      L.inner.style.textShadow = g > .01
-        ? (-5*g).toFixed(1)+'px '+(-2*g).toFixed(1)+'px '+(8*g).toFixed(1)+'px rgba(255,64,64,'+(g*.62).toFixed(2)+'),'
-        + ( 5*g).toFixed(1)+'px '+( 2*g).toFixed(1)+'px '+(8*g).toFixed(1)+'px rgba(64,140,255,'+(g*.56).toFixed(2)+'),'
-        + ( 1*g).toFixed(1)+'px '+(-6*g).toFixed(1)+'px '+(11*g).toFixed(1)+'px rgba(255,214,92,'+(g*.46).toFixed(2)+')'
-        : '';
-    }
-    sv *= .90; root.style.setProperty('--sv', sv.toFixed(3));
-    var vh = innerHeight;
-    pxEls.forEach(function(el){
-      var r = el.getBoundingClientRect();
-      if (r.bottom < -200 || r.top > vh+200) return;
-      el.style.setProperty('--py', ((((r.top+r.height/2)-vh/2)/vh)*34*(parseFloat(el.dataset.px)||1)).toFixed(2) + 'px');
-    });
+    var vh = innerHeight, i, S, r;
 
-    /* подвижная граница кадра: у центра экрана кадр раскрыт, к краям текст его «съедает» */
-    wipes.forEach(function(W){
-      var r = W.el.getBoundingClientRect();
-      if (r.bottom < -100 || r.top > vh + 100) return;
-      var d = Math.abs((r.top + r.height/2) - vh/2) / (vh/2);   /* 0 в центре, 1 у края */
-      var open = 0.34 + 0.66 * Math.max(0, 1 - d);              /* кадр не схлопывается полностью */
-      var cut  = ((1 - open) * 100).toFixed(2);
-      if (W.dir > 0) {                       /* нечётные ряды режет справа */
-        W.frame.style.setProperty('--clipL', '0%');
-        W.frame.style.setProperty('--clipR', cut + '%');
-        W.edge.style.setProperty('--edge', open * 100 + '%');
-      } else {                               /* чётные — слева, шахматно */
-        W.frame.style.setProperty('--clipR', '0%');
-        W.frame.style.setProperty('--clipL', cut + '%');
-        W.edge.style.setProperty('--edge', cut + '%');
+    /* ---------- ФАЗА 1: только чтение геометрии ---------- */
+    var letterRects = null;
+    if (heroVisible && mouse.inHero) {
+      letterRects = [];
+      for (i = 0; i < LETTERS.length; i++) letterRects.push(LETTERS[i].outer.getBoundingClientRect());
+    }
+    for (i = 0; i < pxState.length; i++) {
+      S = pxState[i]; r = S.el.getBoundingClientRect();
+      S.live = !(r.bottom < -200 || r.top > vh + 200);
+      if (S.live) S.target = (((r.top + r.height / 2) - vh / 2) / vh) * 34 * S.k;
+    }
+    for (i = 0; i < wipeState.length; i++) {
+      S = wipeState[i]; r = S.el.getBoundingClientRect();
+      S.live = !(r.bottom < -140 || r.top > vh + 140);
+      if (S.live) {
+        var d = Math.abs((r.top + r.height / 2) - vh / 2) / (vh / 2);
+        S.target = 0.34 + 0.66 * Math.max(0, 1 - d);
       }
-      W.edge.style.setProperty('--edgeOn', (1 - open > .02 ? Math.min(1, (1 - open) * 3.2) : 0).toFixed(2));
-    });
-    if (FINE) tilts.forEach(function(el){
-      var r = el.getBoundingClientRect();
-      if (r.bottom < 0 || r.top > vh) return;
-      var inside = mouse.x > r.left && mouse.x < r.right && mouse.y > r.top && mouse.y < r.bottom;
-      var rx = inside ? -((mouse.y-(r.top+r.height/2))/(r.height/2))*5 : 0;
-      var ry = inside ?  ((mouse.x-(r.left+r.width/2))/(r.width/2))*6 : 0;
-      var crx = parseFloat(el.dataset.crx||0), cry = parseFloat(el.dataset.cry||0);
-      crx += (rx-crx)*.1; cry += (ry-cry)*.1;
-      el.dataset.crx = crx; el.dataset.cry = cry;
-      el.style.setProperty('--rx', crx.toFixed(2)+'deg');
-      el.style.setProperty('--ry', cry.toFixed(2)+'deg');
-    });
+    }
+    if (FINE) for (i = 0; i < tiltState.length; i++) {
+      S = tiltState[i]; r = S.el.getBoundingClientRect();
+      S.live = !(r.bottom < 0 || r.top > vh);
+      if (S.live) {
+        var inside = mouse.x > r.left && mouse.x < r.right && mouse.y > r.top && mouse.y < r.bottom;
+        S.trx = inside ? -((mouse.y - (r.top + r.height / 2)) / (r.height / 2)) * 5 : 0;
+        S.tryy = inside ?  ((mouse.x - (r.left + r.width / 2)) / (r.width / 2)) * 6 : 0;
+      } else { S.trx = 0; S.tryy = 0; }
+    }
+
+    /* ---------- ФАЗА 2: только запись ---------- */
+    if (heroVisible) {
+      for (i = 0; i < LETTERS.length; i++) {
+        var L = LETTERS[i];
+        var idleY = Math.sin(t*.0011 + L.i*.55)*3.4, idleX = Math.cos(t*.0008 + L.i*.42)*1.7;
+        var tx = 0, ty = 0, tsc = 1, tgi = L.tgi;
+        if (letterRects) {
+          var lr = letterRects[i];
+          var dx = (lr.left + lr.width/2) - mouse.x, dy = (lr.top + lr.height/2) - mouse.y;
+          var f = Math.max(0, 1 - Math.sqrt(dx*dx + dy*dy) / 300); f *= f;
+          if (f > 0) { var a = Math.atan2(dy, dx); tx = Math.cos(a)*f*26; ty = Math.sin(a)*f*26 - f*10; tsc = 1 + f*.1; tgi = Math.max(tgi, f); }
+        }
+        L.dx += (tx-L.dx)*.12; L.dy += (ty-L.dy)*.12; L.sc += (tsc-L.sc)*.12; L.gi += (tgi-L.gi)*.1; L.tgi *= .94;
+        L.inner.style.transform = 'translate3d(' + (L.dx+idleX).toFixed(2) + 'px,' + (L.dy+idleY).toFixed(2) + 'px,0) scale(' + L.sc.toFixed(3) + ')';
+        /* тени и размытие переписываем только когда свечение реально изменилось */
+        var g = L.gi;
+        if (L.lastG === undefined || Math.abs(g - L.lastG) > .02) {
+          L.lastG = g;
+          L.inner.style.filter = g > .01 ? 'blur(' + (g*1.1).toFixed(2) + 'px)' : '';
+          L.inner.style.textShadow = g > .01
+            ? (-5*g).toFixed(1)+'px '+(-2*g).toFixed(1)+'px '+(8*g).toFixed(1)+'px rgba(255,64,64,'+(g*.62).toFixed(2)+'),'
+            + ( 5*g).toFixed(1)+'px '+( 2*g).toFixed(1)+'px '+(8*g).toFixed(1)+'px rgba(64,140,255,'+(g*.56).toFixed(2)+'),'
+            + ( 1*g).toFixed(1)+'px '+(-6*g).toFixed(1)+'px '+(11*g).toFixed(1)+'px rgba(255,214,92,'+(g*.46).toFixed(2)+')'
+            : '';
+        }
+      }
+    }
+
+    sv *= .90; if (sv < .004) sv = 0;
+    var svR = Math.round(sv * 100) / 100;
+    if (svR !== lastSv) { lastSv = svR; root.style.setProperty('--sv', svR); }
+
+    for (i = 0; i < pxState.length; i++) {
+      S = pxState[i]; if (!S.live) continue;
+      S.cur += (S.target - S.cur) * S.lerp;
+      var pv = S.cur.toFixed(1) + 'px';
+      if (pv !== S.last) { S.last = pv; S.el.style.setProperty('--py', pv); }
+    }
+
+    for (i = 0; i < wipeState.length; i++) {
+      S = wipeState[i]; if (!S.live) continue;
+      S.cur += (S.target - S.cur) * .085;          /* плавный ход границы, без рывков от скролла */
+      var cv = (S.cur * 100).toFixed(1) + '%';
+      if (cv !== S.last) {
+        S.last = cv;
+        S.cover.style.setProperty('--cov', S.el.classList.contains('from-left') ? '-' + cv : cv);
+      }
+      var eo = (1 - S.cur > .02 ? Math.min(1, (1 - S.cur) * 3.2) : 0).toFixed(2);
+      if (eo !== S.lastEdge) { S.lastEdge = eo; S.cover.style.setProperty('--edgeOn', eo); }
+    }
+
+    if (FINE) for (i = 0; i < tiltState.length; i++) {
+      S = tiltState[i];
+      S.rx += (S.trx - S.rx) * .1; S.ry += (S.tryy - S.ry) * .1;
+      var tv = S.rx.toFixed(2) + '|' + S.ry.toFixed(2);
+      if (tv !== S.last) {
+        S.last = tv;
+        S.el.style.setProperty('--rx', S.rx.toFixed(2) + 'deg');
+        S.el.style.setProperty('--ry', S.ry.toFixed(2) + 'deg');
+      }
+    }
   }
   if (dust) dust(t);
   requestAnimationFrame(master);
@@ -984,8 +1038,10 @@ document.querySelectorAll('.cmedia video, #reelVid').forEach(function(v){ vidIO.
     row.setAttribute('aria-label', 'Открыть категорию ' + cat.title);
     row.innerHTML =
       '<div class="wstack">' +
-        '<div class="wslot l"><img src="' + pick[0].poster + '" alt="" loading="lazy" decoding="async"></div>' +
-        '<div class="wslot r"><img src="' + pick[2].poster + '" alt="" loading="lazy" decoding="async"></div>' +
+        '<div class="wslot l"><img src="' + pick[0].poster + '" alt="" loading="lazy" decoding="async">' +
+          '<video muted loop playsinline preload="none" poster="' + pick[0].poster + '"><source src="' + (pick[0].preview || pick[0].media) + '" type="video/mp4"></video></div>' +
+        '<div class="wslot r"><img src="' + pick[2].poster + '" alt="" loading="lazy" decoding="async">' +
+          '<video muted loop playsinline preload="none" poster="' + pick[2].poster + '"><source src="' + (pick[2].preview || pick[2].media) + '" type="video/mp4"></video></div>' +
         '<div class="wslot m"><img src="' + pick[1].poster + '" alt="" loading="lazy" decoding="async">' +
           '<video muted loop playsinline preload="none" poster="' + pick[1].poster + '"><source src="' + (pick[1].preview || pick[1].media) + '" type="video/mp4"></video>' +
         '</div>' +
@@ -998,19 +1054,23 @@ document.querySelectorAll('.cmedia video, #reelVid').forEach(function(v){ vidIO.
         '<span class="wopen">Смотреть<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="8" x2="13" y2="8"/><polyline points="9,4 13,8 9,12"/></svg></span>' +
       '</div>';
 
-    var mid = row.querySelector('.wslot.m'), mv = mid.querySelector('video');
+    var slots = [].slice.call(row.querySelectorAll('.wslot'));
     if (FINE && !REDUCED) {
-      /* мышь: оживает при наведении */
+      /* мышь: при наведении оживают все три карты */
       row.addEventListener('mouseenter', function(){
-        if (mv.preload === 'none') mv.preload = 'auto';
-        mv.currentTime = 0;
-        mv.play().then(function(){ mid.classList.add('live'); }).catch(function(){});
+        slots.forEach(function(sl){
+          var v = sl.querySelector('video'); if (!v) return;
+          if (v.preload === 'none') v.preload = 'auto';
+          v.currentTime = 0;
+          v.play().then(function(){ sl.classList.add('live'); }).catch(function(){});
+        });
       });
-      row.addEventListener('mouseleave', function(){ mid.classList.remove('live'); mv.pause(); });
+      row.addEventListener('mouseleave', function(){
+        slots.forEach(function(sl){ var v = sl.querySelector('video'); sl.classList.remove('live'); if (v) v.pause(); });
+      });
     } else if (!REDUCED) {
-      /* телефон: наводить нечем — играем, пока блок на экране */
-      mid.classList.add('live');
-      vidIO.observe(mv);
+      /* телефон: наводить нечем — играют, пока блок на экране */
+      slots.forEach(function(sl){ var v = sl.querySelector('video'); if (v) { sl.classList.add('live'); vidIO.observe(v); } });
     }
     row.addEventListener('click', function(){ openLB(ci, 0); });
     row.addEventListener('keydown', function(e){ if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openLB(ci, 0); } });
