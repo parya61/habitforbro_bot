@@ -382,8 +382,10 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
   .lb-desc { display: none; }
   .lb-foot { padding: 10px var(--pad) 12px; }
   .prod-desc { max-height: 60px; opacity: 1; margin-top: 6px; }
-  .lb-peek { width: 62px; max-height: 44svh; }
-  .lb-stage { gap: 8px; padding: 0 6px; }
+  /* пальцем целиться сложнее, чем мышью: соседи чуть шире и заметнее */
+  .lb-peek { width: 76px; max-height: 46svh; opacity: .46; filter: brightness(.7); }
+  .lb-peek:active { opacity: .9; filter: brightness(1); }
+  .lb-stage { gap: 9px; padding: 0 6px; }
   .vctrl { bottom: 12px; }
 }
 @media (max-width: 540px) {
