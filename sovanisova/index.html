@@ -517,7 +517,7 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
   <div class="reel-frame" id="reelFrame">
     <div class="reel-bg" style="background-image:url('reel.jpg')"></div>
     <video id="reelVid" muted loop playsinline preload="metadata" poster="reel.jpg">
-      <source src="reel.mp4?v=10" type="video/mp4">
+      <source src="reel-p.mp4?v=11" type="video/mp4">
     </video>
     <div class="reel-scan"></div>
     <span class="reel-badge">Showreel 2026</span>
@@ -534,13 +534,13 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
   <div class="container">
     <p class="slabel rv">Что я создаю</p>
     <div class="crow">
-      <div class="cmedia tilt" data-px="-1"><div class="frame"><video muted loop playsinline preload="none"><source src="works/hybrid-02.mp4" type="video/mp4"></video></div><i class="edge"></i></div><div class="ctext" data-px="1"><p class="cnum rv">01</p><p class="cphrase rl">Кадр, который<br>невозможно пролистать</p></div>
+      <div class="cmedia tilt" data-px="-1"><div class="frame"><video muted loop playsinline preload="none"><source src="works/hybrid-02-p.mp4" type="video/mp4"></video></div><i class="edge"></i></div><div class="ctext" data-px="1"><p class="cnum rv">01</p><p class="cphrase rl">Кадр, который<br>невозможно пролистать</p></div>
     </div>
     <div class="crow flip">
-      <div class="cmedia tilt" data-px="1"><div class="frame"><video muted loop playsinline preload="none"><source src="works/fullai-03.mp4" type="video/mp4"></video></div><i class="edge"></i></div><div class="ctext" data-px="-1"><p class="cnum rv">02</p><p class="cphrase rl">Ритм, который<br>ведёт зрителя</p></div>
+      <div class="cmedia tilt" data-px="1"><div class="frame"><video muted loop playsinline preload="none"><source src="works/fullai-03-p.mp4" type="video/mp4"></video></div><i class="edge"></i></div><div class="ctext" data-px="-1"><p class="cnum rv">02</p><p class="cphrase rl">Ритм, который<br>ведёт зрителя</p></div>
     </div>
     <div class="crow">
-      <div class="cmedia tilt" data-px="-1"><div class="frame"><video muted loop playsinline preload="none"><source src="works/cinema-04.mp4" type="video/mp4"></video></div><i class="edge"></i></div><div class="ctext" data-px="1"><p class="cnum rv">03</p><p class="cphrase rl">Идея, которая<br>остаётся в памяти</p></div>
+      <div class="cmedia tilt" data-px="-1"><div class="frame"><video muted loop playsinline preload="none"><source src="works/cinema-04-p.mp4" type="video/mp4"></video></div><i class="edge"></i></div><div class="ctext" data-px="1"><p class="cnum rv">03</p><p class="cphrase rl">Идея, которая<br>остаётся в памяти</p></div>
     </div>
   </div>
 </section>
@@ -627,7 +627,8 @@ var FINE    = matchMedia('(pointer: fine)').matches;
 var root    = document.documentElement;
 
 /* ================= DATA ================= */
-function w(cat, n){ var s = 'works/' + cat + '-' + (n < 10 ? '0' + n : n); return { media: s + '.mp4', poster: s + '.jpg' }; }
+function w(cat, n){ var s = 'works/' + cat + '-' + (n < 10 ? '0' + n : n);
+  return { media: s + '.mp4', preview: s + '-p.mp4', poster: s + '.jpg' }; }
 function mix(base, extra){ for (var k in extra) base[k] = extra[k]; return base; }
 
 var CATS = [
@@ -986,7 +987,7 @@ document.querySelectorAll('.cmedia video, #reelVid').forEach(function(v){ vidIO.
         '<div class="wslot l"><img src="' + pick[0].poster + '" alt="" loading="lazy" decoding="async"></div>' +
         '<div class="wslot r"><img src="' + pick[2].poster + '" alt="" loading="lazy" decoding="async"></div>' +
         '<div class="wslot m"><img src="' + pick[1].poster + '" alt="" loading="lazy" decoding="async">' +
-          '<video muted loop playsinline preload="none" poster="' + pick[1].poster + '"><source src="' + pick[1].media + '" type="video/mp4"></video>' +
+          '<video muted loop playsinline preload="none" poster="' + pick[1].poster + '"><source src="' + (pick[1].preview || pick[1].media) + '" type="video/mp4"></video>' +
         '</div>' +
         '<span class="wcount">' + it.length + ' ' + (it.length < 5 ? 'работы' : 'работ') + '</span>' +
       '</div>' +
