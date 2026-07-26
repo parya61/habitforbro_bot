@@ -229,7 +229,7 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
 .lb-x:hover { border-color: var(--accent); transform: rotate(90deg); }
 .lb-x svg { width: 15px; height: 15px; }
 .lb-stage { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; gap: clamp(6px,1.6vw,18px); padding: 0 clamp(8px,2vw,24px); }
-.lb-video { flex: 0 1 auto; min-width: 0; height: 100%; display: flex; align-items: center; justify-content: center; }
+.lb-video { position: relative; flex: 0 1 auto; min-width: 0; height: 100%; display: flex; align-items: center; justify-content: center; }
 .lb-video video { max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: 10px; background: #000; box-shadow: 0 24px 70px rgba(0,0,0,.6); }
 .lb-video.swap { animation: lbSwap .42s var(--e-out); }
 @keyframes lbSwap { from { opacity:.25; transform: scale(.97);} to { opacity:1; transform:none;} }
@@ -237,6 +237,27 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
 .lb-nav:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
 .lb-nav:disabled { opacity: .2; cursor: default; }
 .lb-nav svg { width: 17px; height: 17px; }
+
+/* соседние работы: на телефоне листаем тапом по ним, а не стрелками */
+.lb-peek { display: none; flex: 0 0 auto; width: 40px; aspect-ratio: 9/16; max-height: 42svh; border-radius: 8px; overflow: hidden; background: var(--bg2); opacity: .34; filter: brightness(.6); padding: 0; border: 1px solid rgba(131,153,88,.14); transition: opacity var(--d-fast), filter var(--d-fast), transform var(--d-fast) var(--e-out); }
+.lb-peek img { width: 100%; height: 100%; object-fit: cover; }
+.lb-peek:active { opacity: .75; filter: brightness(.9); }
+.lb-peek.prev:active { transform: translateX(-4px); }
+.lb-peek.next:active { transform: translateX(4px); }
+.lb-peek.empty { visibility: hidden; }
+
+/* свой минимальный плеер вместо системного */
+.vctrl { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 9px; }
+.vbtn { position: relative; width: 46px; height: 46px; border-radius: 50%; background: rgba(11,32,24,.6); border: 1px solid rgba(247,244,213,.16); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; color: var(--text); transition: background var(--d-fast), transform var(--d-fast) var(--e-out); }
+.vbtn:hover { background: rgba(11,32,24,.86); transform: scale(1.07); }
+.vbtn.sm { width: 38px; height: 38px; }
+.vbtn .icon { width: 13px; height: 13px; }
+.vbtn.sm .icon { width: 15px; height: 15px; }
+/* прогресс идёт по окружности кнопки */
+.ring { position: absolute; inset: -2px; transform: rotate(-90deg); overflow: visible; }
+.ring circle { fill: none; stroke-width: 1.6; }
+.ring .trk { stroke: rgba(247,244,213,.14); }
+.ring .bar { stroke: var(--accent); stroke-linecap: round; stroke-dasharray: 100.53; stroke-dashoffset: 100.53; transition: stroke-dashoffset .12s linear; }
 .lb-foot { flex: 0 0 auto; padding: 12px var(--pad) 16px; text-align: center; }
 .lb-name { font-size: clamp(.95rem,2vw,1.35rem); font-weight: 600; letter-spacing: .07em; text-transform: uppercase; margin-bottom: 3px; }
 .lb-cat { font-size: .56rem; letter-spacing: .16em; text-transform: uppercase; color: var(--organic); margin-bottom: 8px; }
@@ -325,6 +346,10 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
   .lb-desc { display: none; }
   .lb-foot { padding: 10px var(--pad) 12px; }
   .prod-desc { max-height: 60px; opacity: 1; margin-top: 6px; }
+  /* телефон: вместо стрелок — сами соседние ролики */
+  .lb-nav { display: none; }
+  .lb-peek { display: block; }
+  .lb-stage { gap: 8px; padding: 0 6px; }
 }
 @media (max-width: 540px) {
   .prod-grid { grid-template-columns: 1fr 1fr; }
@@ -469,9 +494,11 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
     </button>
   </div>
   <div class="lb-stage" id="lbStage">
+    <button class="lb-peek prev" id="lbPeekPrev" aria-label="Предыдущая работа"><img alt="" loading="lazy"></button>
     <button class="lb-nav" id="lbPrev" aria-label="Предыдущая работа"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="10,2 4,8 10,14"/></svg></button>
     <div class="lb-video" id="lbVideo"></div>
     <button class="lb-nav" id="lbNext" aria-label="Следующая работа"><svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><polyline points="6,2 12,8 6,14"/></svg></button>
+    <button class="lb-peek next" id="lbPeekNext" aria-label="Следующая работа"><img alt="" loading="lazy"></button>
   </div>
   <div class="lb-foot">
     <h3 class="lb-name" id="lbName"></h3>
@@ -824,9 +851,16 @@ var lb = document.getElementById('lb'), lbVideo = document.getElementById('lbVid
     lbName = document.getElementById('lbName'), lbCat = document.getElementById('lbCat'),
     lbDesc = document.getElementById('lbDesc'), lbCount = document.getElementById('lbCount'),
     lbCatTop = document.getElementById('lbCatTop'), lbStrip = document.getElementById('lbStrip'),
-    lbPrev = document.getElementById('lbPrev'), lbNext = document.getElementById('lbNext');
-var curCat = 0, pos = 0, lastFocus = null;
+    lbPrev = document.getElementById('lbPrev'), lbNext = document.getElementById('lbNext'),
+    lbPeekPrev = document.getElementById('lbPeekPrev'), lbPeekNext = document.getElementById('lbPeekNext');
+var curCat = 0, pos = 0, lastFocus = null, lbMuted = true;
 function items(){ return CATS[curCat].items; }
+
+var ICON_PLAY  = '<svg class="icon" viewBox="0 0 16 16" fill="currentColor"><polygon points="4,2 14,8 4,14"/></svg>';
+var ICON_PAUSE = '<svg class="icon" viewBox="0 0 16 16" fill="currentColor"><rect x="3" y="2" width="3.5" height="12" rx="1"/><rect x="9.5" y="2" width="3.5" height="12" rx="1"/></svg>';
+var ICON_OFF   = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><line x1="23" y1="9" x2="17" y2="15"/><line x1="17" y1="9" x2="23" y2="15"/></svg>';
+var ICON_ON    = '<svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M11 5L6 9H2v6h4l5 4V5z"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14"/><path d="M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>';
+var RING = 100.53;   /* длина окружности r=16 */
 
 function buildStrip(){
   lbStrip.innerHTML = '';
@@ -841,14 +875,59 @@ function buildStrip(){
 }
 function renderLB(anim){
   var list = items(), it = list[pos];
-  lbVideo.innerHTML = '<video src="' + it.media + '" poster="' + it.poster + '" controls autoplay loop playsinline></video>';
+
+  /* системные контролы убраны — рисуем свои */
+  lbVideo.innerHTML =
+    '<video src="' + it.media + '" poster="' + it.poster + '" autoplay loop playsinline' + (lbMuted ? ' muted' : '') + '></video>' +
+    '<div class="vctrl">' +
+      '<button class="vbtn" id="vPlay" aria-label="Пауза">' +
+        '<svg class="ring" viewBox="0 0 36 36"><circle class="trk" cx="18" cy="18" r="16"/><circle class="bar" cx="18" cy="18" r="16"/></svg>' +
+        ICON_PAUSE +
+      '</button>' +
+      '<button class="vbtn sm" id="vMute" aria-label="Звук">' + (lbMuted ? ICON_OFF : ICON_ON) + '</button>' +
+    '</div>';
+
   lbVideo.classList.remove('swap');
   if (anim) { void lbVideo.offsetWidth; lbVideo.classList.add('swap'); }
+
+  var v    = lbVideo.querySelector('video');
+  var btn  = lbVideo.querySelector('#vPlay');
+  var mute = lbVideo.querySelector('#vMute');
+  var bar  = lbVideo.querySelector('.bar');
+
+  v.muted = lbMuted;
+  function setIcon(){ btn.innerHTML = '<svg class="ring" viewBox="0 0 36 36"><circle class="trk" cx="18" cy="18" r="16"/><circle class="bar" cx="18" cy="18" r="16"/></svg>' + (v.paused ? ICON_PLAY : ICON_PAUSE); bar = lbVideo.querySelector('.bar'); }
+  function toggle(){ if (v.paused) v.play().catch(function(){}); else v.pause(); }
+
+  btn.addEventListener('click', function(e){ e.stopPropagation(); toggle(); });
+  v.addEventListener('click', function(e){ e.stopPropagation(); toggle(); });
+  v.addEventListener('play',  setIcon);
+  v.addEventListener('pause', setIcon);
+  v.addEventListener('timeupdate', function(){
+    if (!v.duration || !bar) return;
+    bar.style.strokeDashoffset = (RING * (1 - v.currentTime / v.duration)).toFixed(2);
+  });
+  mute.addEventListener('click', function(e){
+    e.stopPropagation();
+    lbMuted = !lbMuted; v.muted = lbMuted;
+    mute.innerHTML = lbMuted ? ICON_OFF : ICON_ON;
+    if (!lbMuted) v.play().catch(function(){});
+  });
+
   lbName.textContent = it.name; lbCat.textContent = it.cat; lbDesc.textContent = it.desc;
   lbCatTop.textContent = CATS[curCat].title;
   lbCount.textContent = String(pos+1).padStart(2,'0') + ' / ' + String(list.length).padStart(2,'0');
+
   lbPrev.disabled = pos === 0;
   lbNext.disabled = pos === list.length - 1;
+
+  /* соседние ролики по бокам — тап по ним листает */
+  var p = list[pos-1], n = list[pos+1];
+  lbPeekPrev.classList.toggle('empty', !p);
+  lbPeekNext.classList.toggle('empty', !n);
+  if (p) lbPeekPrev.firstElementChild.src = p.poster;
+  if (n) lbPeekNext.firstElementChild.src = n.poster;
+
   [].slice.call(lbStrip.children).forEach(function(t, k){ t.classList.toggle('on', k === pos); });
   var act = lbStrip.children[pos];
   if (act) lbStrip.scrollTo({ left: act.offsetLeft - lbStrip.clientWidth/2 + act.clientWidth/2, behavior: 'smooth' });
@@ -871,6 +950,8 @@ function stepLB(d){
 }
 lbPrev.addEventListener('click', function(e){ e.stopPropagation(); stepLB(-1); });
 lbNext.addEventListener('click', function(e){ e.stopPropagation(); stepLB(1); });
+lbPeekPrev.addEventListener('click', function(e){ e.stopPropagation(); stepLB(-1); });
+lbPeekNext.addEventListener('click', function(e){ e.stopPropagation(); stepLB(1); });
 document.getElementById('lbX').addEventListener('click', closeLB);
 lb.addEventListener('click', function(e){
   if (e.target === lb || e.target.id === 'lbStage' || e.target.id === 'lbVideo' || e.target.classList.contains('lb-foot')) closeLB();
