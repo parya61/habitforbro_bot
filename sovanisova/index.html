@@ -243,9 +243,9 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
 .lb-x { flex: 0 0 auto; width: 44px; height: 44px; border-radius: 50%; display: flex; align-items: center; justify-content: center; color: var(--text); border: 1px solid var(--line); background: rgba(11,32,24,.6); transition: color var(--d-fast), transform var(--d-fast) var(--e-out), border-color var(--d-fast); }
 .lb-x:hover { border-color: var(--accent); transform: rotate(90deg); }
 .lb-x svg { width: 15px; height: 15px; }
-.lb-stage { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; gap: clamp(6px,1.6vw,18px); padding: 0 clamp(8px,2vw,24px); }
-.lb-video { position: relative; flex: 0 1 auto; min-width: 0; height: 100%; display: flex; align-items: center; justify-content: center; }
-.lb-video video { max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: 10px; background: #000; box-shadow: 0 24px 70px rgba(0,0,0,.6); }
+.lb-stage { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; gap: 0; padding: 0 clamp(8px,2vw,24px); }
+.lb-video { position: relative; z-index: 3; flex: 0 1 auto; min-width: 0; height: 100%; display: flex; align-items: center; justify-content: center; }
+.lb-video video { max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: 10px; background: #000; box-shadow: 0 26px 76px rgba(0,0,0,.72), 0 0 0 1px rgba(11,32,24,.9); }
 .lb-video.swap { animation: lbSwap .42s var(--e-out); }
 @keyframes lbSwap { from { opacity:.25; transform: scale(.97);} to { opacity:1; transform:none;} }
 .lb-nav { flex: 0 0 auto; width: clamp(40px,5vw,54px); height: clamp(40px,5vw,54px); border-radius: 50%; background: rgba(11,32,24,.72); border: 1px solid rgba(131,153,88,.25); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; color: var(--text); transition: background var(--d-fast), transform var(--d-fast) var(--e-out), opacity var(--d-fast); }
@@ -253,18 +253,25 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
 .lb-nav:disabled { opacity: .2; cursor: default; }
 .lb-nav svg { width: 17px; height: 17px; }
 
-/* соседние работы по бокам: нажимаешь — становится основной */
+/* соседние работы лежат КОЛОДОЙ за основным видео и выглядывают краем */
+.lb { --peekW: clamp(150px, 20vw, 280px); --peekShow: 58px; }
 .lb-peek {
-  flex: 0 0 auto; width: clamp(64px, 9vw, 148px); aspect-ratio: 9/16; max-height: 52svh;
-  border-radius: 9px; overflow: hidden; background: var(--bg2); padding: 0;
-  opacity: .3; filter: brightness(.5); border: 1px solid rgba(131,153,88,.14); cursor: pointer;
-  transition: opacity var(--d-mid) var(--e-out), filter var(--d-mid), transform var(--d-mid) var(--e-out), border-color var(--d-fast);
+  position: relative; z-index: 1; flex: 0 0 auto; padding: 0; cursor: pointer;
+  width: var(--peekW); aspect-ratio: 9/16;
+  border-radius: 10px; overflow: hidden; background: var(--bg2);
+  border: 1px solid rgba(131,153,88,.14);
+  box-shadow: 0 20px 46px rgba(0,0,0,.55);
+  opacity: .55; filter: brightness(.5);
+  transition: transform var(--d-mid) var(--e-out), opacity var(--d-mid), filter var(--d-mid), box-shadow var(--d-mid);
 }
 .lb-peek img { width: 100%; height: 100%; object-fit: cover; }
-.lb-peek:hover { opacity: .72; filter: brightness(.9); border-color: rgba(211,150,140,.3); }
-.lb-peek.prev:hover { transform: translateX(-6px) scale(1.04); }
-.lb-peek.next:hover { transform: translateX(6px) scale(1.04); }
-.lb-peek:active { opacity: .85; }
+/* отрицательный отступ заводит карту под основное видео, наружу торчит ровно --peekShow */
+.lb-peek.prev { margin-right: calc(var(--peekShow) - var(--peekW)); transform-origin: right center; transform: rotate(-6deg) scale(.93); }
+.lb-peek.next { margin-left:  calc(var(--peekShow) - var(--peekW)); transform-origin: left center;  transform: rotate(6deg)  scale(.93); }
+.lb-peek.prev:hover { transform: rotate(-8.5deg) scale(.98) translateX(-16px); opacity: .88; filter: brightness(.95); box-shadow: 0 26px 58px rgba(0,0,0,.62); }
+.lb-peek.next:hover { transform: rotate(8.5deg)  scale(.98) translateX(16px);  opacity: .88; filter: brightness(.95); box-shadow: 0 26px 58px rgba(0,0,0,.62); }
+.lb-peek.prev:active { transform: rotate(-8.5deg) scale(.95) translateX(-8px); }
+.lb-peek.next:active { transform: rotate(8.5deg)  scale(.95) translateX(8px); }
 .lb-peek.empty { visibility: hidden; }
 /* стрелки больше не нужны — листаем самими роликами */
 .lb-nav { display: none; }
@@ -382,10 +389,10 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
   .lb-desc { display: none; }
   .lb-foot { padding: 10px var(--pad) 12px; }
   .prod-desc { max-height: 60px; opacity: 1; margin-top: 6px; }
-  /* пальцем целиться сложнее, чем мышью: соседи чуть шире и заметнее */
-  .lb-peek { width: 76px; max-height: 46svh; opacity: .46; filter: brightness(.7); }
-  .lb-peek:active { opacity: .9; filter: brightness(1); }
-  .lb-stage { gap: 9px; padding: 0 6px; }
+  /* пальцем целиться сложнее: карта торчит заметнее и светлее */
+  .lb { --peekW: 150px; --peekShow: 46px; }
+  .lb-peek { opacity: .62; filter: brightness(.68); }
+  .lb-stage { padding: 0 4px; }
   .vctrl { bottom: 12px; }
 }
 @media (max-width: 540px) {
