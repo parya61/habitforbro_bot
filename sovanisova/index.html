@@ -74,9 +74,17 @@ body.loaded .pre { transform: translateY(-101%); visibility: hidden; }
 .pre-inner { text-align: center; transition: opacity .4s var(--e-io); }
 body.loaded .pre-inner { opacity: 0; }
 .pre-word { font-size: clamp(.85rem,2.4vw,1.15rem); font-weight: 500; letter-spacing: .4em; text-transform: uppercase; padding-left: .4em; }
-.pre-bar { width: min(200px,42vw); height: 1px; margin: 22px auto 0; background: var(--faint); position: relative; overflow: hidden; }
-.pre-bar i { position: absolute; inset: 0; transform-origin: left; transform: scaleX(var(--p,0)); background: var(--accent); transition: transform .18s linear; }
 .no-js .pre { display: none; }
+
+/* сова в кольце прогресса, дышит и моргает */
+.pre-owl { position: relative; width: clamp(150px, 34vw, 230px); margin: 0 auto 26px; }
+.pre-owl .owl { width: 68%; margin: 0 auto; animation: owlBreath 2.8s ease-in-out infinite; }
+@keyframes owlBreath { 0%,100% { transform: scale(1) translateY(0); } 50% { transform: scale(1.045) translateY(-3px); } }
+.pre-owl .halo { position: absolute; inset: 0; transform: rotate(-90deg); overflow: visible; }
+.pre-owl .halo circle { fill: none; stroke-width: 1.1; }
+.pre-owl .halo .trk { stroke: rgba(247,244,213,.1); }
+.pre-owl .halo .bar { stroke: var(--accent); stroke-linecap: round; stroke-dasharray: 301.6; stroke-dashoffset: calc(301.6 * (1 - var(--p, 0))); transition: stroke-dashoffset .2s linear; filter: drop-shadow(0 0 6px rgba(211,150,140,.55)); }
+.pre-pct { margin-top: 14px; font-size: .6rem; letter-spacing: .3em; color: var(--dim); font-variant-numeric: tabular-nums; }
 
 .prog { position: fixed; top: 0; left: 0; right: 0; height: 2px; z-index: 300; transform-origin: left; transform: scaleX(0); background: linear-gradient(90deg, var(--accent), var(--organic), var(--cool)); animation: progGrow linear both; animation-timeline: scroll(root block); }
 @keyframes progGrow { to { transform: scaleX(1); } }
@@ -85,9 +93,25 @@ body.loaded .pre-inner { opacity: 0; }
 /* ============ NAV ============ */
 .nav { position: fixed; top: 0; left: 0; right: 0; z-index: 200; padding: 16px var(--pad); display: flex; align-items: center; justify-content: space-between; transition: padding var(--d-mid) var(--e-out), background var(--d-mid), backdrop-filter var(--d-mid); }
 .nav.scrolled { padding: 10px var(--pad); background: rgba(11,32,24,.9); backdrop-filter: blur(18px); -webkit-backdrop-filter: blur(18px); border-bottom: 1px solid var(--line); }
-.nav-brand img { height: 58px; width: auto; transition: height var(--d-mid) var(--e-out), transform var(--d-mid) var(--e-out); }
-.nav.scrolled .nav-brand img { height: 42px; }
-.nav-brand:hover img { transform: rotate(-5deg) scale(1.06); }
+.nav-brand { display: flex; align-items: center; gap: 14px; }
+.nav-brand-name { font-size: .78rem; font-weight: 500; letter-spacing: .26em; text-transform: lowercase; color: var(--text); white-space: nowrap; transition: opacity var(--d-mid), letter-spacing var(--d-mid) var(--e-out); }
+
+/* сова: моргание вырезает зрачки маской, поэтому работает на любом фоне */
+.owl { position: relative; display: block; isolation: isolate; flex: 0 0 auto; transition: transform var(--d-mid) var(--e-out), width var(--d-mid) var(--e-out); }
+.owl img { display: block; width: 100%; height: auto; }
+.owl .lid {
+  position: absolute; top: 18.5%; width: 23.5%; height: 27%;
+  background: #000; mix-blend-mode: destination-out; border-radius: 50%;
+  transform-origin: 50% 0; transform: scaleY(0);
+}
+.owl .lid.l { left: 19%; }
+.owl .lid.r { left: 57.5%; }
+.owl.blink .lid { animation: blink .34s ease-in-out; }
+@keyframes blink { 0% { transform: scaleY(0);} 45% { transform: scaleY(1);} 100% { transform: scaleY(0);} }
+
+.nav-brand .owl { width: 86px; }
+.nav.scrolled .nav-brand .owl { width: 62px; }
+.nav-brand:hover .owl { transform: rotate(-4deg) scale(1.05); }
 .nav-links { display: flex; gap: 34px; }
 .nl { font-size: .7rem; letter-spacing: .14em; text-transform: uppercase; color: var(--dim); transition: color var(--d-fast); position: relative; }
 .nl::after { content:''; position:absolute; left:0; bottom:-5px; width:0; height:1px; background: var(--accent); transition: width var(--d-fast) var(--e-out); }
@@ -183,9 +207,22 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
 .crow:last-child { margin-bottom: 0; }
 .crow.flip { grid-template-columns: .85fr 1.15fr; }
 .crow.flip .cmedia { order: 2; } .crow.flip .ctext { order: 1; }
-.cmedia { position: relative; width: 100%; aspect-ratio: 16/10; border-radius: 10px; overflow: hidden; background: var(--bg2); box-shadow: 0 24px 60px rgba(0,0,0,.32), 0 0 0 1px rgba(131,153,88,.12); will-change: transform; transform: perspective(1000px) translateY(var(--py,0px)) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)); }
+.cmedia { position: relative; width: 100%; aspect-ratio: 16/10; will-change: transform; transform: perspective(1000px) translateY(var(--py,0px)) rotateX(var(--rx,0deg)) rotateY(var(--ry,0deg)); }
+/* кадр обрезается подвижной границей: при скролле текст «съедает» видео и отпускает обратно */
+.cmedia .frame {
+  position: absolute; inset: 0; border-radius: 10px; overflow: hidden; background: var(--bg2);
+  box-shadow: 0 24px 60px rgba(0,0,0,.32), 0 0 0 1px rgba(131,153,88,.12);
+  clip-path: inset(0 var(--clipR, 0%) 0 var(--clipL, 0%) round 10px);
+}
 .cmedia video, .cmedia .ph { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; transform: scale(1.06); }
-.cmedia::after { content:''; position:absolute; inset:0; background: linear-gradient(120deg, rgba(11,32,24,.34), transparent 60%); }
+.cmedia .frame::after { content:''; position:absolute; inset:0; background: linear-gradient(120deg, rgba(11,32,24,.34), transparent 60%); }
+/* светящаяся кромка ровно на линии среза */
+.cmedia .edge {
+  position: absolute; top: -2%; bottom: -2%; width: 2px; z-index: 3; pointer-events: none;
+  left: var(--edge, 100%); opacity: var(--edgeOn, 0);
+  background: linear-gradient(to bottom, transparent, var(--accent), transparent);
+  box-shadow: 0 0 18px 3px rgba(211,150,140,.45);
+}
 .ctext { will-change: transform; transform: translateY(var(--py,0px)); }
 .cnum { font-family: var(--serif); font-size: 1.05rem; color: var(--organic); letter-spacing: .1em; margin-bottom: 13px; }
 .cphrase { font-family: var(--serif); font-weight: 300; font-size: var(--t-h2); line-height: 1.22; }
@@ -246,8 +283,19 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
 .lb-stage { flex: 1 1 auto; min-height: 0; display: flex; align-items: center; justify-content: center; gap: 0; padding: 0 clamp(8px,2vw,24px); }
 .lb-video { position: relative; z-index: 3; flex: 0 1 auto; min-width: 0; height: 100%; display: flex; align-items: center; justify-content: center; }
 .lb-video video { max-width: 100%; max-height: 100%; width: auto; height: auto; border-radius: 10px; background: #000; box-shadow: 0 26px 76px rgba(0,0,0,.72), 0 0 0 1px rgba(11,32,24,.9); }
-.lb-video.swap { animation: lbSwap .42s var(--e-out); }
-@keyframes lbSwap { from { opacity:.25; transform: scale(.97);} to { opacity:1; transform:none;} }
+/* смена работы: карта прилетает с той стороны, откуда её взяли */
+.lb-video.swap-next { animation: swapNext .55s var(--e-out); }
+.lb-video.swap-prev { animation: swapPrev .55s var(--e-out); }
+@keyframes swapNext {
+  0%   { opacity: .2; transform: translateX(34%) rotate(6deg) scale(.9); }
+  60%  { opacity: 1; }
+  100% { opacity: 1; transform: none; }
+}
+@keyframes swapPrev {
+  0%   { opacity: .2; transform: translateX(-34%) rotate(-6deg) scale(.9); }
+  60%  { opacity: 1; }
+  100% { opacity: 1; transform: none; }
+}
 .lb-nav { flex: 0 0 auto; width: clamp(40px,5vw,54px); height: clamp(40px,5vw,54px); border-radius: 50%; background: rgba(11,32,24,.72); border: 1px solid rgba(131,153,88,.25); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; color: var(--text); transition: background var(--d-fast), transform var(--d-fast) var(--e-out), opacity var(--d-fast); }
 .lb-nav:hover:not(:disabled) { background: var(--accent); color: var(--bg); }
 .lb-nav:disabled { opacity: .2; cursor: default; }
@@ -366,7 +414,10 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
   .nav-links.open { opacity: 1; visibility: visible; }
   .nl { font-size: 1rem; color: var(--text); }
   .nav-toggle { display: flex; }
-  .nav-brand img { height: 46px; }
+  .nav-brand { gap: 10px; }
+  .nav-brand .owl { width: 72px; }
+  .nav.scrolled .nav-brand .owl { width: 58px; }   /* и в прокрутке остаётся крупной */
+  .nav-brand-name { font-size: .66rem; letter-spacing: .2em; }
 
   /* телефон: вертикальный формат почти во весь экран */
   .hero { gap: 10px; padding: calc(52px + 1vh) 12px 14px; }
@@ -422,14 +473,30 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
 <div class="prog"></div>
 
 <div class="pre" id="pre">
-  <div class="pre-inner">
+  <div class="pre-inner" id="preInner">
+    <div class="pre-owl">
+      <span class="owl" id="preOwl">
+        <img src="logo-mark.png?v=11" alt="">
+        <i class="lid l"></i><i class="lid r"></i>
+      </span>
+      <svg class="halo" viewBox="0 0 100 100" aria-hidden="true">
+        <circle class="trk" cx="50" cy="50" r="48"/>
+        <circle class="bar" cx="50" cy="50" r="48"/>
+      </svg>
+    </div>
     <p class="pre-word" id="preWord">SOVANISOVA</p>
-    <div class="pre-bar"><i id="preBar"></i></div>
+    <p class="pre-pct" id="prePct">0%</p>
   </div>
 </div>
 
 <nav class="nav" id="nav">
-  <a class="nav-brand" href="#"><img src="logo.png?v=10" alt="sovanisova"></a>
+  <a class="nav-brand" href="#">
+    <span class="owl" id="navOwl">
+      <img src="logo-mark.png?v=11" alt="sovanisova">
+      <i class="lid l"></i><i class="lid r"></i>
+    </span>
+    <span class="nav-brand-name">sovanisova</span>
+  </a>
   <div class="nav-links" id="navLinks">
     <a class="nl" href="#create">Подход</a>
     <a class="nl" href="#works">Работы</a>
@@ -467,16 +534,13 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
   <div class="container">
     <p class="slabel rv">Что я создаю</p>
     <div class="crow">
-      <div class="cmedia tilt" data-px="-1"><video muted loop playsinline preload="none"><source src="works/hybrid-02.mp4" type="video/mp4"></video></div>
-      <div class="ctext" data-px="1"><p class="cnum rv">01</p><p class="cphrase rl">Кадр, который<br>невозможно пролистать</p></div>
+      <div class="cmedia tilt" data-px="-1"><div class="frame"><video muted loop playsinline preload="none"><source src="works/hybrid-02.mp4" type="video/mp4"></video></div><i class="edge"></i></div><div class="ctext" data-px="1"><p class="cnum rv">01</p><p class="cphrase rl">Кадр, который<br>невозможно пролистать</p></div>
     </div>
     <div class="crow flip">
-      <div class="cmedia tilt" data-px="1"><video muted loop playsinline preload="none"><source src="works/fullai-03.mp4" type="video/mp4"></video></div>
-      <div class="ctext" data-px="-1"><p class="cnum rv">02</p><p class="cphrase rl">Ритм, который<br>ведёт зрителя</p></div>
+      <div class="cmedia tilt" data-px="1"><div class="frame"><video muted loop playsinline preload="none"><source src="works/fullai-03.mp4" type="video/mp4"></video></div><i class="edge"></i></div><div class="ctext" data-px="-1"><p class="cnum rv">02</p><p class="cphrase rl">Ритм, который<br>ведёт зрителя</p></div>
     </div>
     <div class="crow">
-      <div class="cmedia tilt" data-px="-1"><video muted loop playsinline preload="none"><source src="works/cinema-04.mp4" type="video/mp4"></video></div>
-      <div class="ctext" data-px="1"><p class="cnum rv">03</p><p class="cphrase rl">Идея, которая<br>остаётся в памяти</p></div>
+      <div class="cmedia tilt" data-px="-1"><div class="frame"><video muted loop playsinline preload="none"><source src="works/cinema-04.mp4" type="video/mp4"></video></div><i class="edge"></i></div><div class="ctext" data-px="1"><p class="cnum rv">03</p><p class="cphrase rl">Идея, которая<br>остаётся в памяти</p></div>
     </div>
   </div>
 </section>
@@ -497,7 +561,7 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
     <div class="steps">
       <div class="step rv"><div class="step-n">01</div><h3 class="step-name">Идея</h3><p class="step-desc">Обсуждаем задачу, аудиторию и формат</p></div>
       <div class="step rv"><div class="step-n">02</div><h3 class="step-name">Сценарий</h3><p class="step-desc">Разрабатываю концепцию и раскадровку</p></div>
-      <div class="step rv"><div class="step-n">03</div><h3 class="step-name">Продакшен</h3><p class="step-desc">Съёмка, генерация, монтаж, обработка</p></div>
+      <div class="step rv"><div class="step-n">03</div><h3 class="step-name">Продакшн</h3><p class="step-desc">Съёмка, генерация, монтаж, обработка</p></div>
       <div class="step rv"><div class="step-n">04</div><h3 class="step-name">Результат</h3><p class="step-desc">Готовый ролик для ваших площадок</p></div>
     </div>
   </div>
@@ -648,9 +712,30 @@ function scramble(el, dur){
   })();
 }
 
+/* моргание: раз в несколько секунд, иногда дважды подряд */
+function blinkLoop(owl){
+  if (!owl || REDUCED) return;
+  function once(){
+    owl.classList.remove('blink'); void owl.offsetWidth; owl.classList.add('blink');
+  }
+  (function schedule(){
+    setTimeout(function(){
+      if (!document.hidden && owl.isConnected) {
+        once();
+        if (Math.random() < .3) setTimeout(once, 420);   /* двойное моргание */
+      }
+      schedule();
+    }, 2600 + Math.random() * 3200);
+  })();
+}
+blinkLoop(document.getElementById('navOwl'));
+
 (function(){
-  var pre = document.getElementById('pre'), bar = document.getElementById('preBar');
+  var pre = document.getElementById('pre'), inner = document.getElementById('preInner'), pct = document.getElementById('prePct');
   if (REDUCED) { document.body.classList.add('loaded'); return; }
+  var owl = document.getElementById('preOwl');
+  blinkLoop(owl);
+  setTimeout(function(){ owl.classList.remove('blink'); void owl.offsetWidth; owl.classList.add('blink'); }, 450);
   scramble(document.getElementById('preWord'), 1000);
   var v = 0, done = false;
   function finish(){
@@ -660,8 +745,9 @@ function scramble(el, dur){
   }
   var t = setInterval(function(){
     v = Math.min(100, v + Math.random()*11 + 5);
-    bar.style.setProperty('--p', (v/100).toFixed(3));
-    if (v >= 100) { clearInterval(t); setTimeout(finish, 220); }
+    inner.style.setProperty('--p', (v/100).toFixed(3));
+    pct.textContent = Math.floor(v) + '%';
+    if (v >= 100) { clearInterval(t); setTimeout(finish, 260); }
   }, 55);
   setTimeout(finish, 2600);
   addEventListener('error', finish, true);
@@ -770,7 +856,12 @@ var dust = (function(){
 })();
 
 /* ================= MASTER LOOP ================= */
-var tilts = [].slice.call(document.querySelectorAll('.tilt'));
+/* выборки считаем один раз: querySelectorAll на каждом кадре ощутимо тормозил страницу */
+var tilts  = [].slice.call(document.querySelectorAll('.tilt'));
+var pxEls  = [].slice.call(document.querySelectorAll('[data-px]'));
+var wipes  = [].slice.call(document.querySelectorAll('.cmedia')).map(function(el, i){
+  return { el: el, frame: el.querySelector('.frame'), edge: el.querySelector('.edge'), dir: i % 2 ? -1 : 1 };
+});
 function master(t){
   if (!REDUCED) {
     for (var i=0;i<LETTERS.length;i++){
@@ -795,10 +886,29 @@ function master(t){
     }
     sv *= .90; root.style.setProperty('--sv', sv.toFixed(3));
     var vh = innerHeight;
-    document.querySelectorAll('[data-px]').forEach(function(el){
+    pxEls.forEach(function(el){
       var r = el.getBoundingClientRect();
       if (r.bottom < -200 || r.top > vh+200) return;
       el.style.setProperty('--py', ((((r.top+r.height/2)-vh/2)/vh)*34*(parseFloat(el.dataset.px)||1)).toFixed(2) + 'px');
+    });
+
+    /* подвижная граница кадра: у центра экрана кадр раскрыт, к краям текст его «съедает» */
+    wipes.forEach(function(W){
+      var r = W.el.getBoundingClientRect();
+      if (r.bottom < -100 || r.top > vh + 100) return;
+      var d = Math.abs((r.top + r.height/2) - vh/2) / (vh/2);   /* 0 в центре, 1 у края */
+      var open = 0.34 + 0.66 * Math.max(0, 1 - d);              /* кадр не схлопывается полностью */
+      var cut  = ((1 - open) * 100).toFixed(2);
+      if (W.dir > 0) {                       /* нечётные ряды режет справа */
+        W.frame.style.setProperty('--clipL', '0%');
+        W.frame.style.setProperty('--clipR', cut + '%');
+        W.edge.style.setProperty('--edge', open * 100 + '%');
+      } else {                               /* чётные — слева, шахматно */
+        W.frame.style.setProperty('--clipR', '0%');
+        W.frame.style.setProperty('--clipL', cut + '%');
+        W.edge.style.setProperty('--edge', cut + '%');
+      }
+      W.edge.style.setProperty('--edgeOn', (1 - open > .02 ? Math.min(1, (1 - open) * 3.2) : 0).toFixed(2));
     });
     if (FINE) tilts.forEach(function(el){
       var r = el.getBoundingClientRect();
@@ -932,11 +1042,11 @@ function buildStrip(){
     t.className = 'thumb' + (k === pos ? ' on' : '');
     t.type = 'button'; t.setAttribute('aria-label', it.name);
     t.innerHTML = '<img src="' + it.poster + '" alt="" loading="lazy">';
-    t.addEventListener('click', function(e){ e.stopPropagation(); pos = k; renderLB(true); });
+    t.addEventListener('click', function(e){ e.stopPropagation(); var d = k > pos ? 1 : -1; pos = k; renderLB(d); });
     lbStrip.appendChild(t);
   });
 }
-function renderLB(anim){
+function renderLB(dir){
   var list = items(), it = list[pos];
 
   /* системные контролы убраны — рисуем свои */
@@ -950,8 +1060,8 @@ function renderLB(anim){
       '<button class="vbtn sm" id="vMute" aria-label="Звук"><span class="vico">' + (lbMuted ? ICON_OFF : ICON_ON) + '</span></button>' +
     '</div>';
 
-  lbVideo.classList.remove('swap');
-  if (anim) { void lbVideo.offsetWidth; lbVideo.classList.add('swap'); }
+  lbVideo.classList.remove('swap-next', 'swap-prev');
+  if (dir) { void lbVideo.offsetWidth; lbVideo.classList.add(dir > 0 ? 'swap-next' : 'swap-prev'); }
 
   var v    = lbVideo.querySelector('video');
   var btn  = lbVideo.querySelector('#vPlay');
@@ -999,7 +1109,7 @@ function renderLB(anim){
 }
 function openLB(ci, k){
   curCat = ci; pos = k; lastFocus = document.activeElement;
-  buildStrip(); renderLB(false);
+  buildStrip(); renderLB(0);
   lb.classList.add('open'); lockScroll(true);
   document.getElementById('reelVid').pause();
   document.getElementById('lbX').focus();
@@ -1011,7 +1121,7 @@ function closeLB(){
 function stepLB(d){
   var n = pos + d;
   if (n < 0 || n >= items().length) return;
-  pos = n; renderLB(true);
+  pos = n; renderLB(d);
 }
 lbPrev.addEventListener('click', function(e){ e.stopPropagation(); stepLB(-1); });
 lbNext.addEventListener('click', function(e){ e.stopPropagation(); stepLB(1); });
