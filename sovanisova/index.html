@@ -125,9 +125,13 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
 
 /* рамка шоурила: ширина выводится из высоты, поэтому всегда влезает */
 .reel-frame {
-  position: relative; z-index: 2; flex: 0 1 auto;
-  width: 100%; aspect-ratio: 16/9;
-  max-width: min(1000px, calc(52svh * 16 / 9));
+  position: relative; z-index: 2;
+  /* высота задаётся явно, ширина следует из пропорции — рамку нельзя схлопнуть */
+  flex: 0 0 auto;
+  height: min(50svh, calc(min(1000px, 100vw - 2 * var(--pad)) * 9 / 16));
+  min-height: 190px;
+  aspect-ratio: 16/9; width: auto;
+  max-width: calc(100vw - 2 * var(--pad));
   border-radius: 12px; overflow: hidden; background: #000;
   box-shadow: 0 30px 80px rgba(0,0,0,.5), 0 0 0 1px rgba(131,153,88,.16);
   /* AI-проявление */
@@ -266,14 +270,22 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
 .lb-nav { display: none; }
 
 /* свой минимальный плеер вместо системного */
-.vctrl { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 9px; }
-.vbtn { position: relative; width: 46px; height: 46px; border-radius: 50%; background: rgba(11,32,24,.6); border: 1px solid rgba(247,244,213,.16); backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); display: flex; align-items: center; justify-content: center; color: var(--text); transition: background var(--d-fast), transform var(--d-fast) var(--e-out); }
+.vctrl { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 10px; }
+.vbtn {
+  position: relative; width: 48px; height: 48px; flex: 0 0 auto; border-radius: 50%; padding: 0;
+  background: rgba(11,32,24,.6); border: 1px solid rgba(247,244,213,.16);
+  backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px); color: var(--text);
+  display: grid; place-items: center;              /* значок строго по центру */
+  transition: background var(--d-fast), transform var(--d-fast) var(--e-out);
+}
 .vbtn:hover { background: rgba(11,32,24,.86); transform: scale(1.07); }
-.vbtn.sm { width: 38px; height: 38px; }
-.vbtn .icon { width: 13px; height: 13px; }
-.vbtn.sm .icon { width: 15px; height: 15px; }
-/* прогресс идёт по окружности кнопки */
-.ring { position: absolute; inset: -2px; transform: rotate(-90deg); overflow: visible; }
+.vbtn.sm { width: 40px; height: 40px; }
+/* и кольцо, и значок лежат в одной ячейке грида — смещаться нечему */
+.vbtn > .ring, .vbtn > .vico { grid-area: 1 / 1; }
+.vico { display: grid; place-items: center; width: 100%; height: 100%; }
+.vico .icon { width: 14px; height: 14px; display: block; }
+.vbtn.sm .vico .icon { width: 16px; height: 16px; }
+.ring { width: 100%; height: 100%; transform: rotate(-90deg); overflow: visible; pointer-events: none; }
 .ring circle { fill: none; stroke-width: 1.6; }
 .ring .trk { stroke: rgba(247,244,213,.14); }
 .ring .bar { stroke: var(--accent); stroke-linecap: round; stroke-dasharray: 100.53; stroke-dashoffset: 100.53; transition: stroke-dashoffset .12s linear; }
@@ -353,7 +365,12 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
   .hero { gap: 10px; padding: calc(52px + 1vh) 12px 14px; }
   .wordmark { font-size: clamp(1.5rem, 7.6vw, 2.4rem); }
   .hero-tag { margin-top: 8px; }
-  .reel-frame { aspect-ratio: 9/16; max-width: min(100%, calc(70svh * 9 / 16)); border-radius: 14px; }
+  .reel-frame {
+    aspect-ratio: 9/16;
+    height: min(66svh, calc((100vw - 24px) * 16 / 9));
+    min-height: 0; width: auto; max-width: calc(100vw - 24px);
+    border-radius: 14px;
+  }
   .reel-frame video { object-fit: cover; }
   .reel-bg { display: none; }
 
@@ -365,8 +382,9 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
   .lb-desc { display: none; }
   .lb-foot { padding: 10px var(--pad) 12px; }
   .prod-desc { max-height: 60px; opacity: 1; margin-top: 6px; }
-  .lb-peek { width: 40px; max-height: 42svh; }
+  .lb-peek { width: 62px; max-height: 44svh; }
   .lb-stage { gap: 8px; padding: 0 6px; }
+  .vctrl { bottom: 12px; }
 }
 @media (max-width: 540px) {
   .prod-grid { grid-template-columns: 1fr 1fr; }
@@ -732,21 +750,12 @@ var dust = (function(){
       var tw = .55 + .45*Math.sin(t*.0021 + p.ph);
       var al = Math.min(.95, p.a * tw * (1 + boost * 1.7));   /* на скролле разгорается */
       var x = p.x + p.ox, y = p.y + p.oy;
-      var streak = boost * 22 * p.dp;
 
+      /* никаких вытянутых штрихов — только снос и свечение */
       ctx.beginPath();
-      if (streak > 2) {                    /* быстрый скролл — частицы вытягиваются в штрихи */
-        ctx.strokeStyle = 'rgba(219,207,166,' + al.toFixed(3) + ')';
-        ctx.lineWidth = p.r * 1.5;
-        ctx.lineCap = 'round';
-        ctx.moveTo(x, y);
-        ctx.lineTo(x, y - streak * scrollDir);
-        ctx.stroke();
-      } else {
-        ctx.arc(x, y, p.r, 0, 6.2832);
-        ctx.fillStyle = 'rgba(214,201,155,' + al.toFixed(3) + ')';
-        ctx.fill();
-      }
+      ctx.arc(x, y, p.r, 0, 6.2832);
+      ctx.fillStyle = 'rgba(214,201,155,' + al.toFixed(3) + ')';
+      ctx.fill();
     }
   };
 })();
@@ -869,15 +878,19 @@ document.querySelectorAll('.cmedia video, #reelVid').forEach(function(v){ vidIO.
         '<span class="wopen">Смотреть<svg viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><line x1="3" y1="8" x2="13" y2="8"/><polyline points="9,4 13,8 9,12"/></svg></span>' +
       '</div>';
 
-    /* при наведении центральная карточка оживает */
     var mid = row.querySelector('.wslot.m'), mv = mid.querySelector('video');
     if (FINE && !REDUCED) {
+      /* мышь: оживает при наведении */
       row.addEventListener('mouseenter', function(){
         if (mv.preload === 'none') mv.preload = 'auto';
         mv.currentTime = 0;
         mv.play().then(function(){ mid.classList.add('live'); }).catch(function(){});
       });
       row.addEventListener('mouseleave', function(){ mid.classList.remove('live'); mv.pause(); });
+    } else if (!REDUCED) {
+      /* телефон: наводить нечем — играем, пока блок на экране */
+      mid.classList.add('live');
+      vidIO.observe(mv);
     }
     row.addEventListener('click', function(){ openLB(ci, 0); });
     row.addEventListener('keydown', function(e){ if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openLB(ci, 0); } });
@@ -923,9 +936,9 @@ function renderLB(anim){
     '<div class="vctrl">' +
       '<button class="vbtn" id="vPlay" aria-label="Пауза">' +
         '<svg class="ring" viewBox="0 0 36 36"><circle class="trk" cx="18" cy="18" r="16"/><circle class="bar" cx="18" cy="18" r="16"/></svg>' +
-        ICON_PAUSE +
+        '<span class="vico">' + ICON_PAUSE + '</span>' +
       '</button>' +
-      '<button class="vbtn sm" id="vMute" aria-label="Звук">' + (lbMuted ? ICON_OFF : ICON_ON) + '</button>' +
+      '<button class="vbtn sm" id="vMute" aria-label="Звук"><span class="vico">' + (lbMuted ? ICON_OFF : ICON_ON) + '</span></button>' +
     '</div>';
 
   lbVideo.classList.remove('swap');
@@ -935,9 +948,11 @@ function renderLB(anim){
   var btn  = lbVideo.querySelector('#vPlay');
   var mute = lbVideo.querySelector('#vMute');
   var bar  = lbVideo.querySelector('.bar');
+  var ico  = btn.querySelector('.vico');
 
   v.muted = lbMuted;
-  function setIcon(){ btn.innerHTML = '<svg class="ring" viewBox="0 0 36 36"><circle class="trk" cx="18" cy="18" r="16"/><circle class="bar" cx="18" cy="18" r="16"/></svg>' + (v.paused ? ICON_PLAY : ICON_PAUSE); bar = lbVideo.querySelector('.bar'); }
+  /* меняем только значок: кольцо остаётся на месте и не теряет прогресс */
+  function setIcon(){ ico.innerHTML = v.paused ? ICON_PLAY : ICON_PAUSE; }
   function toggle(){ if (v.paused) v.play().catch(function(){}); else v.pause(); }
 
   btn.addEventListener('click', function(e){ e.stopPropagation(); toggle(); });
@@ -951,7 +966,7 @@ function renderLB(anim){
   mute.addEventListener('click', function(e){
     e.stopPropagation();
     lbMuted = !lbMuted; v.muted = lbMuted;
-    mute.innerHTML = lbMuted ? ICON_OFF : ICON_ON;
+    mute.querySelector('.vico').innerHTML = lbMuted ? ICON_OFF : ICON_ON;
     if (!lbMuted) v.play().catch(function(){});
   });
 
