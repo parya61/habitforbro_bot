@@ -42,8 +42,20 @@
 }
 
 *, *::before, *::after { margin: 0; padding: 0; box-sizing: border-box; }
-html { scroll-behavior: smooth; }
-body { font-family: var(--sans); background: var(--bg); color: var(--text); line-height: 1.6; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+/* фон на html, чтобы слой песка (z-index:-1) лёг поверх него, но под контентом */
+html { scroll-behavior: smooth; background: var(--bg); }
+body { font-family: var(--sans); background: transparent; color: var(--text); line-height: 1.6; -webkit-font-smoothing: antialiased; overflow-x: hidden; }
+
+/* песок и сияние — на весь сайт, за контентом */
+#dust { position: fixed; inset: 0; z-index: -1; pointer-events: none; }
+.sglow {
+  position: fixed; inset: 0; z-index: -1; pointer-events: none;
+  opacity: calc(var(--sv) * .8);
+  background:
+    radial-gradient(ellipse 70% 45% at 50% 50%, rgba(211,150,140,.10), transparent 70%),
+    radial-gradient(ellipse 60% 40% at 18% 28%, rgba(131,153,88,.09), transparent 72%),
+    radial-gradient(ellipse 55% 38% at 82% 72%, rgba(58,138,158,.08), transparent 72%);
+}
 a { color: inherit; text-decoration: none; }
 button { border: none; background: none; color: inherit; cursor: pointer; font: inherit; }
 img, video { display: block; max-width: 100%; }
@@ -93,7 +105,6 @@ body.loaded .pre-inner { opacity: 0; }
   padding: calc(58px + 3vh) var(--pad) clamp(20px, 4vh, 40px);
   position: relative; overflow: hidden;
 }
-#dust { position: absolute; inset: 0; z-index: 1; pointer-events: none; }
 .glow { position: absolute; border-radius: 50%; pointer-events: none; filter: blur(90px); will-change: transform; }
 .g1 { width: 520px; height: 520px; background: rgba(211,150,140,.1); top: -12%; right: -6%; animation: f1 20s ease-in-out infinite; }
 .g2 { width: 420px; height: 420px; background: rgba(131,153,88,.09); bottom: -10%; left: -8%; animation: f2 24s ease-in-out infinite; }
@@ -238,13 +249,21 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
 .lb-nav:disabled { opacity: .2; cursor: default; }
 .lb-nav svg { width: 17px; height: 17px; }
 
-/* соседние работы: на телефоне листаем тапом по ним, а не стрелками */
-.lb-peek { display: none; flex: 0 0 auto; width: 40px; aspect-ratio: 9/16; max-height: 42svh; border-radius: 8px; overflow: hidden; background: var(--bg2); opacity: .34; filter: brightness(.6); padding: 0; border: 1px solid rgba(131,153,88,.14); transition: opacity var(--d-fast), filter var(--d-fast), transform var(--d-fast) var(--e-out); }
+/* соседние работы по бокам: нажимаешь — становится основной */
+.lb-peek {
+  flex: 0 0 auto; width: clamp(64px, 9vw, 148px); aspect-ratio: 9/16; max-height: 52svh;
+  border-radius: 9px; overflow: hidden; background: var(--bg2); padding: 0;
+  opacity: .3; filter: brightness(.5); border: 1px solid rgba(131,153,88,.14); cursor: pointer;
+  transition: opacity var(--d-mid) var(--e-out), filter var(--d-mid), transform var(--d-mid) var(--e-out), border-color var(--d-fast);
+}
 .lb-peek img { width: 100%; height: 100%; object-fit: cover; }
-.lb-peek:active { opacity: .75; filter: brightness(.9); }
-.lb-peek.prev:active { transform: translateX(-4px); }
-.lb-peek.next:active { transform: translateX(4px); }
+.lb-peek:hover { opacity: .72; filter: brightness(.9); border-color: rgba(211,150,140,.3); }
+.lb-peek.prev:hover { transform: translateX(-6px) scale(1.04); }
+.lb-peek.next:hover { transform: translateX(6px) scale(1.04); }
+.lb-peek:active { opacity: .85; }
 .lb-peek.empty { visibility: hidden; }
+/* стрелки больше не нужны — листаем самими роликами */
+.lb-nav { display: none; }
 
 /* свой минимальный плеер вместо системного */
 .vctrl { position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%); z-index: 6; display: flex; align-items: center; gap: 9px; }
@@ -346,9 +365,7 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
   .lb-desc { display: none; }
   .lb-foot { padding: 10px var(--pad) 12px; }
   .prod-desc { max-height: 60px; opacity: 1; margin-top: 6px; }
-  /* телефон: вместо стрелок — сами соседние ролики */
-  .lb-nav { display: none; }
-  .lb-peek { display: block; }
+  .lb-peek { width: 40px; max-height: 42svh; }
   .lb-stage { gap: 8px; padding: 0 6px; }
 }
 @media (max-width: 540px) {
@@ -372,6 +389,8 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
 </head>
 <body class="no-js">
 
+<canvas id="dust"></canvas>
+<div class="sglow"></div>
 <div class="tex"></div>
 <div class="prog"></div>
 
@@ -394,7 +413,6 @@ body.loaded .hero-tag { animation: fadeUp .8s 1.05s var(--e-out) forwards; }
 </nav>
 
 <section class="hero" id="hero">
-  <canvas id="dust"></canvas>
   <div class="glow g1"></div><div class="glow g2"></div><div class="glow g3"></div>
 
   <div class="hero-inner">
@@ -667,8 +685,12 @@ addEventListener('mousemove', function(e){ mouse.x = e.clientX; mouse.y = e.clie
 var heroEl = document.getElementById('hero');
 heroEl.addEventListener('mouseenter', function(){ mouse.inHero = true; });
 heroEl.addEventListener('mouseleave', function(){ mouse.inHero = false; });
-var lastY = scrollY, sv = 0;
-addEventListener('scroll', function(){ var d = Math.abs(scrollY - lastY); lastY = scrollY; sv = Math.min(1, sv + d/190); }, { passive:true });
+var lastY = scrollY, sv = 0, scrollDir = 1;
+addEventListener('scroll', function(){
+  var delta = scrollY - lastY; lastY = scrollY;
+  if (delta) scrollDir = delta > 0 ? 1 : -1;   /* вниз листаем — песок сносит вверх, и наоборот */
+  sv = Math.min(1, sv + Math.abs(delta)/190);
+}, { passive:true });
 
 /* ================= DUST ================= */
 var dust = (function(){
@@ -676,36 +698,55 @@ var dust = (function(){
   if (REDUCED) { cv.style.display = 'none'; return null; }
   var ctx = cv.getContext('2d'), W=0, H=0, dpr = Math.min(2, devicePixelRatio||1), P=[];
   function size(){
-    var r = heroEl.getBoundingClientRect();
-    W = r.width; H = r.height;
+    W = innerWidth; H = innerHeight;
     cv.width = W*dpr; cv.height = H*dpr;
     cv.style.width = W+'px'; cv.style.height = H+'px';
     ctx.setTransform(dpr,0,0,dpr,0,0);
-    var n = Math.round(Math.min(190, W/8));
+    var n = Math.round(Math.max(60, Math.min(220, (W*H)/9000)));
     P = [];
     for (var i=0;i<n;i++) P.push({ x:Math.random()*W, y:Math.random()*H, r:Math.random()*2+.4,
-      vx:(Math.random()-.5)*.34, vy:-(Math.random()*.36+.07), a:Math.random()*.5+.16, ph:Math.random()*6.28, ox:0, oy:0 });
+      vx:(Math.random()-.5)*.34, vy:-(Math.random()*.36+.07), a:Math.random()*.5+.16,
+      ph:Math.random()*6.28, ox:0, oy:0, dp:Math.random()*.7+.35 });
   }
   size(); addEventListener('resize', size);
+
   return function(t){
     ctx.clearRect(0,0,W,H);
-    var hr = heroEl.getBoundingClientRect(), mx = mouse.x - hr.left, my = mouse.y - hr.top;
+    var boost = sv;                       /* 0..1 — насколько быстро сейчас листают */
     for (var i=0;i<P.length;i++){
       var p = P[i];
-      p.x += p.vx; p.y += p.vy;
-      if (p.y < -8) { p.y = H+8; p.x = Math.random()*W; }
-      if (p.x < -8) p.x = W+8; else if (p.x > W+8) p.x = -8;
+      /* при скролле песок сносит вниз пропорционально глубине — ближние сильнее */
+      p.x += p.vx;
+      p.y += p.vy + boost * 9 * p.dp * scrollDir;
+      if (p.y < -10) { p.y = H+10; p.x = Math.random()*W; }
+      else if (p.y > H+10) { p.y = -10; p.x = Math.random()*W; }
+      if (p.x < -10) p.x = W+10; else if (p.x > W+10) p.x = -10;
+
       var tx=0, ty=0;
-      if (mouse.inHero) {
-        var dx = p.x-mx, dy = p.y-my, d2 = dx*dx+dy*dy;
+      if (mouse.x > -999) {
+        var dx = p.x-mouse.x, dy = p.y-mouse.y, d2 = dx*dx+dy*dy;
         if (d2 < 19600 && d2 > .01) { var d = Math.sqrt(d2), f = (1-d/140)*26; tx = dx/d*f; ty = dy/d*f; }
       }
       p.ox += (tx-p.ox)*.08; p.oy += (ty-p.oy)*.08;
+
       var tw = .55 + .45*Math.sin(t*.0021 + p.ph);
+      var al = Math.min(.95, p.a * tw * (1 + boost * 1.7));   /* на скролле разгорается */
+      var x = p.x + p.ox, y = p.y + p.oy;
+      var streak = boost * 22 * p.dp;
+
       ctx.beginPath();
-      ctx.arc(p.x+p.ox, p.y+p.oy, p.r, 0, 6.2832);
-      ctx.fillStyle = 'rgba(214,201,155,' + (p.a*tw).toFixed(3) + ')';
-      ctx.fill();
+      if (streak > 2) {                    /* быстрый скролл — частицы вытягиваются в штрихи */
+        ctx.strokeStyle = 'rgba(219,207,166,' + al.toFixed(3) + ')';
+        ctx.lineWidth = p.r * 1.5;
+        ctx.lineCap = 'round';
+        ctx.moveTo(x, y);
+        ctx.lineTo(x, y - streak * scrollDir);
+        ctx.stroke();
+      } else {
+        ctx.arc(x, y, p.r, 0, 6.2832);
+        ctx.fillStyle = 'rgba(214,201,155,' + al.toFixed(3) + ')';
+        ctx.fill();
+      }
     }
   };
 })();
